@@ -29,6 +29,9 @@ server/prisma/migrations/.migrate.tmp
 coverage/
 .nyc_output/
 
+# tsc incremental build cache
+*.tsbuildinfo
+
 # misc
 *.pem
 *.key
