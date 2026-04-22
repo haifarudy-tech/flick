@@ -1,18 +1,23 @@
 import { useMemo, useState } from 'react';
 import { T } from '@/tokens';
-import { useCartStore } from '@/stores/cart';
+import { useCartStore, computeTotals } from '@/stores/cart';
 import type { OrderType } from '@/stores/cart';
+import { useAuthStore } from '@/stores/auth';
 import { useMenu } from '@/hooks/useMenu';
+import { useCreateOrder } from '@/hooks/useCreateOrder';
 import { CategoryBar } from '@/components/pos/CategoryBar';
 import { ProductGrid } from '@/components/pos/ProductGrid';
 import { CartPanel } from '@/components/pos/CartPanel';
+import { CheckoutPanel, type CheckoutResult } from '@/components/pos/CheckoutPanel';
+import { ReceiptModal, type ReceiptInfo } from '@/components/pos/ReceiptModal';
+import { api } from '@/lib/api';
 
 // --- POS Terminal ---------------------------------------------------------
 // Chunks:
 //  - chunk 1: shell + header (done)
-//  - chunk 2 (this): product grid + category filter + live search
-//  - chunk 3: cart panel with line controls + discount
-//  - chunk 4: checkout (card / cash / split) + receipt modal
+//  - chunk 2: product grid + category filter + live search (done)
+//  - chunk 3: cart panel with line controls + discount (done)
+//  - chunk 4 (this): checkout (card / cash / split) + receipt modal
 //  - chunk 5: offline queue + hold/recall
 // -------------------------------------------------------------------------
 
@@ -27,11 +32,22 @@ export function PosPage() {
   const setType = useCartStore((s) => s.setType);
   const tableNumber = useCartStore((s) => s.tableNumber);
   const setTable = useCartStore((s) => s.setTable);
+  const lines = useCartStore((s) => s.lines);
+  const discountPercent = useCartStore((s) => s.discountPercent);
+  const customerName = useCartStore((s) => s.customerName);
+  const customerPhone = useCartStore((s) => s.customerPhone);
+  const deliveryAddress = useCartStore((s) => s.deliveryAddress);
+  const clearCart = useCartStore((s) => s.clear);
+
+  const business = useAuthStore((s) => s.business);
 
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('all');
+  const [view, setView] = useState<'cart' | 'checkout'>('cart');
+  const [receipt, setReceipt] = useState<ReceiptInfo | null>(null);
 
   const menu = useMenu();
+  const createOrder = useCreateOrder();
 
   const filteredItems = useMemo(() => {
     if (!menu.data) return [];
@@ -43,6 +59,59 @@ export function PosPage() {
       return true;
     });
   }, [menu.data, search, categoryId]);
+
+  const totals = computeTotals(lines, discountPercent, 0);
+
+  const submitOrder = async (result: CheckoutResult) => {
+    if (lines.length === 0) return;
+
+    const res = await createOrder.mutateAsync({
+      type,
+      tableNumber: type === 'DINE_IN' ? tableNumber : undefined,
+      customerName: customerName || undefined,
+      customerPhone: customerPhone || undefined,
+      deliveryAddress: type === 'DELIVERY' ? deliveryAddress || undefined : undefined,
+      discountAmount: 0,
+      discountPercent,
+      items: lines.map((l) => ({
+        menuItemId: l.menuItemId,
+        name: l.name,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        notes: l.notes,
+        modifiers: l.modifiers,
+      })),
+    });
+
+    // Fire-and-forget cash payment record on the server when known.
+    // Card payments are finalised via Stripe Terminal in session 5.
+    if (!res.queued && result.method === 'CASH' && result.cashTendered != null) {
+      try {
+        await api.post('/api/v1/payments/cash', {
+          orderId: res.id,
+          amount: totals.total,
+          tendered: result.cashTendered,
+        });
+      } catch {
+        /* non-fatal — the order itself is on record */
+      }
+    }
+
+    setReceipt({
+      orderNumber: res.queued ? 'offline' : res.id.slice(-4).toUpperCase(),
+      businessName: business?.name ?? 'Flick',
+      total: totals.total,
+      subtotal: totals.subtotal,
+      vat: totals.vat,
+      discount: totals.discount,
+      lines,
+      paymentMethod: result.method,
+      change: result.change,
+    });
+
+    clearCart();
+    setView('cart');
+  };
 
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -78,7 +147,11 @@ export function PosPage() {
         {menu.isLoading ? (
           <GridSkeleton />
         ) : menu.isError ? (
-          <ErrorState message={menu.error instanceof Error ? menu.error.message : 'Menu failed to load'} />
+          <ErrorState
+            message={
+              menu.error instanceof Error ? menu.error.message : 'Menu failed to load'
+            }
+          />
         ) : filteredItems.length === 0 && (menu.data?.items.length ?? 0) === 0 ? (
           <EmptyMenuState />
         ) : (
@@ -96,15 +169,23 @@ export function PosPage() {
           flexShrink: 0,
         }}
       >
-        <CartPanel
-          onCharge={() => {
-            /* opens the checkout view in chunk 4 */
-          }}
-          onHold={() => {
-            /* opens the holds panel in chunk 5 */
-          }}
-        />
+        {view === 'cart' ? (
+          <CartPanel
+            onCharge={() => setView('checkout')}
+            onHold={() => {
+              /* chunk 5 */
+            }}
+          />
+        ) : (
+          <CheckoutPanel
+            onBack={() => setView('cart')}
+            onConfirm={submitOrder}
+            submitting={createOrder.isPending}
+          />
+        )}
       </aside>
+
+      {receipt && <ReceiptModal info={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }
