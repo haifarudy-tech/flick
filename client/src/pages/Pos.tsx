@@ -5,6 +5,7 @@ import type { OrderType } from '@/stores/cart';
 import { useMenu } from '@/hooks/useMenu';
 import { CategoryBar } from '@/components/pos/CategoryBar';
 import { ProductGrid } from '@/components/pos/ProductGrid';
+import { CartPanel } from '@/components/pos/CartPanel';
 
 // --- POS Terminal ---------------------------------------------------------
 // Chunks:
@@ -93,13 +94,16 @@ export function PosPage() {
           flexDirection: 'column',
           background: T.surface,
           flexShrink: 0,
-          padding: 20,
-          gap: 8,
-          color: T.textDim,
         }}
       >
-        <div style={{ fontSize: 13, fontWeight: 800, color: T.text }}>Cart</div>
-        <div style={{ fontSize: 12 }}>Cart UI arrives in chunk 3.</div>
+        <CartPanel
+          onCharge={() => {
+            /* opens the checkout view in chunk 4 */
+          }}
+          onHold={() => {
+            /* opens the holds panel in chunk 5 */
+          }}
+        />
       </aside>
     </div>
   );
