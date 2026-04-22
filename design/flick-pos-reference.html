@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#0C0B09" />
+<title>Flick — POS & Delivery Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: 'DM Sans', -apple-system, sans-serif;
+    background: #0C0B09;
+    color: #EDE8DF;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+  #root { height: 100vh; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel" data-type="module">
+
+const { useState, useEffect } = React;
+
+// ═══════════════════════════════════════════════════════════════════
+// DESIGN TOKENS
+// ═══════════════════════════════════════════════════════════════════
+const T = {
+  bg:"#0C0B09", surface:"#161410", card:"#1E1B16", cardHover:"#252119",
+  border:"#2A2620", borderLight:"#332E27",
+  accent:"#E07A4A", accentDark:"#B85E32", accentGlow:"rgba(224,122,74,0.12)",
+  gold:"#C8993A", goldGlow:"rgba(200,153,58,0.12)",
+  green:"#4EA86B", greenGlow:"rgba(78,168,107,0.12)",
+  red:"#C95454", redGlow:"rgba(201,84,84,0.12)",
+  blue:"#4A8BC8", blueGlow:"rgba(74,139,200,0.12)",
+  purple:"#9B72CF", purpleGlow:"rgba(155,114,207,0.12)",
+  text:"#EDE8DF", textMid:"#9A8E7E", textDim:"#524840",
+};
+const font = "'DM Sans', sans-serif";
+const fmt  = (n) => `£${Number(n).toFixed(2)}`;
+const fmtK = (n) => n>=1000 ? `£${(n/1000).toFixed(1)}k` : fmt(n);
+
+// ═══════════════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════════════
+const CATEGORIES = ["All","Coffee","Food","Drinks","Desserts","Extras"];
+
+const MENU_ITEMS = [
+  { id:1,  name:"Flat White",      price:3.80, cost:0.90, cat:"Coffee",   emoji:"☕", available:true,  popular:true  },
+  { id:2,  name:"Oat Latte",       price:4.50, cost:1.10, cat:"Coffee",   emoji:"🥛", available:true,  popular:true  },
+  { id:3,  name:"Espresso",        price:2.80, cost:0.60, cat:"Coffee",   emoji:"🫘", available:true,  popular:false },
+  { id:4,  name:"Cold Brew",       price:4.20, cost:0.95, cat:"Coffee",   emoji:"🧊", available:true,  popular:true  },
+  { id:5,  name:"Matcha Latte",    price:5.00, cost:1.30, cat:"Coffee",   emoji:"🍵", available:false, popular:false },
+  { id:6,  name:"Avocado Toast",   price:9.50, cost:2.80, cat:"Food",     emoji:"🥑", available:true,  popular:true  },
+  { id:7,  name:"Eggs Benedict",   price:12.00,cost:3.50, cat:"Food",     emoji:"🍳", available:true,  popular:false },
+  { id:8,  name:"Granola Bowl",    price:7.80, cost:1.90, cat:"Food",     emoji:"🫙", available:true,  popular:false },
+  { id:9,  name:"Banana Bread",    price:4.50, cost:0.80, cat:"Food",     emoji:"🍞", available:true,  popular:false },
+  { id:10, name:"Club Sandwich",   price:11.50,cost:3.20, cat:"Food",     emoji:"🥪", available:true,  popular:false },
+  { id:11, name:"Fresh OJ",        price:4.50, cost:1.00, cat:"Drinks",   emoji:"🍊", available:true,  popular:false },
+  { id:12, name:"Sparkling Water", price:2.50, cost:0.40, cat:"Drinks",   emoji:"💧", available:true,  popular:false },
+  { id:13, name:"Mint Lemonade",   price:4.80, cost:0.90, cat:"Drinks",   emoji:"🍋", available:true,  popular:false },
+  { id:14, name:"Croissant",       price:3.50, cost:0.70, cat:"Desserts", emoji:"🥐", available:true,  popular:true  },
+  { id:15, name:"Choc Cake Slice", price:5.50, cost:1.20, cat:"Desserts", emoji:"🍰", available:true,  popular:false },
+  { id:16, name:"Almond Milk +",   price:0.60, cost:0.15, cat:"Extras",   emoji:"➕", available:true,  popular:false },
+  { id:17, name:"Extra Shot",      price:0.80, cost:0.10, cat:"Extras",   emoji:"⚡", available:true,  popular:false },
+];
+
+const INIT_ORDERS = [
+  { id:"#1042", time:"9:14 AM", items:[{name:"Flat White",qty:2},{name:"Avocado Toast",qty:1}], total:17.10, type:"Dine In",  table:"2", status:"ready",       staff:"SK", source:"POS" },
+  { id:"UE-8821", time:"9:32 AM", items:[{name:"Flat White",qty:2},{name:"Avocado Toast",qty:1}], total:17.10, type:"Delivery", table:"—", status:"new", staff:"—", source:"UBER_EATS", platformColor:"#06C167", platformIcon:"🛵" },
+  { id:"#1041", time:"9:08 AM", items:[{name:"Oat Latte",qty:1},{name:"Cold Brew",qty:1},{name:"Croissant",qty:2}],total:16.50,type:"Takeaway",table:"—",status:"in-progress",staff:"JM", source:"POS" },
+  { id:"DR-4401", time:"9:28 AM", items:[{name:"Eggs Benedict",qty:2},{name:"Fresh OJ",qty:2}], total:33.00, type:"Delivery", table:"—", status:"in-progress", staff:"—", source:"DELIVEROO", platformColor:"#00CCBC", platformIcon:"🦘" },
+  { id:"#1040", time:"8:55 AM", items:[{name:"Espresso",qty:1},{name:"Banana Bread",qty:1}],    total:7.30,  type:"Dine In",  table:"7", status:"completed",    staff:"SK", source:"POS" },
+];
+
+const PLATFORMS = [
+  { id:"ubereats",  name:"Uber Eats",       icon:"🛵", color:"#06C167", commission:30, connected:true,  ordersToday:14, revenueToday:312.40, avgOrder:22.31 },
+  { id:"deliveroo", name:"Deliveroo",       icon:"🦘", color:"#00CCBC", commission:32, connected:true,  ordersToday:9,  revenueToday:198.60, avgOrder:22.07 },
+  { id:"justeat",   name:"Just Eat",        icon:"🍔", color:"#FF8000", commission:14, connected:true,  ordersToday:6,  revenueToday:134.20, avgOrder:22.37 },
+  { id:"own",       name:"Direct (QR App)", icon:"📱", color:"#E07A4A", commission:0,  connected:true,  ordersToday:4,  revenueToday:92.80,  avgOrder:23.20 },
+];
+
+const STAFF = [
+  { id:1, name:"Sara K",    pin:"1234", role:"Manager",  avatar:"SK", sales:342.80, hours:4.5  },
+  { id:2, name:"James M",   pin:"5678", role:"Cashier",  avatar:"JM", sales:198.40, hours:3.0  },
+  { id:3, name:"Priya N",   pin:"9012", role:"Kitchen",  avatar:"PN", sales:0,      hours:4.5  },
+];
+
+const HOURLY = [
+  {h:"7am",rev:45},  {h:"8am",rev:120}, {h:"9am",rev:210},
+  {h:"10am",rev:180},{h:"11am",rev:240},{h:"12pm",rev:310},
+  {h:"1pm",rev:280}, {h:"2pm",rev:190}, {h:"3pm",rev:145},
+  {h:"4pm",rev:160}, {h:"5pm",rev:95},  {h:"6pm",rev:55},
+];
+
+const NAV = [
+  { key:"pos",       icon:"⊞", label:"POS"      },
+  { key:"orders",    icon:"◫", label:"Orders"   },
+  { key:"kitchen",   icon:"🍳", label:"Kitchen"  },
+  { key:"delivery",  icon:"🛵", label:"Delivery" },
+  { key:"analytics", icon:"◈", label:"Stats"    },
+  { key:"menu",      icon:"☰", label:"Menu"     },
+  { key:"staff",     icon:"◉", label:"Staff"    },
+  { key:"settings",  icon:"⚙", label:"Settings" },
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// SHARED COMPONENTS
+// ═══════════════════════════════════════════════════════════════════
+const Pill = ({ color, children }) => (
+  <span style={{ background:color+"20", border:`1px solid ${color}40`, color, borderRadius:20, padding:"2px 9px", fontSize:11, fontWeight:700, display:"inline-flex", alignItems:"center", gap:4 }}>{children}</span>
+);
+
+const Toggle = ({ on, onChange }) => (
+  <div onClick={onChange} style={{ width:40,height:22,borderRadius:11,background:on?T.accent:T.border,position:"relative",cursor:"pointer",transition:"all 0.2s",flexShrink:0 }}>
+    <div style={{ position:"absolute",top:3,left:on?21:3,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.4)" }} />
+  </div>
+);
+
+const Btn = ({ children, variant="primary", onClick, disabled, small, full, icon }) => {
+  const styles = {
+    primary:   { bg:`linear-gradient(135deg,${T.accent},${T.accentDark})`, color:"#fff", border:"none", shadow:`0 4px 18px ${T.accent}35` },
+    secondary: { bg:T.card, color:T.textMid, border:`1px solid ${T.border}`, shadow:"none" },
+    danger:    { bg:T.redGlow, color:T.red, border:`1px solid ${T.red}30`, shadow:"none" },
+    ghost:     { bg:"transparent", color:T.textMid, border:`1px dashed ${T.border}`, shadow:"none" },
+    success:   { bg:T.greenGlow, color:T.green, border:`1px solid ${T.green}30`, shadow:"none" },
+  };
+  const s = styles[variant];
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      background: disabled ? T.card : s.bg,
+      color: disabled ? T.textDim : s.color,
+      border: s.border,
+      borderRadius: small ? 8 : 12,
+      padding: small ? "6px 14px" : full ? "14px" : "10px 18px",
+      width: full ? "100%" : "auto",
+      cursor: disabled ? "not-allowed" : "pointer",
+      fontSize: small ? 12 : 13,
+      fontWeight: 700,
+      fontFamily: font,
+      boxShadow: disabled ? "none" : s.shadow,
+      display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+      transition:"all 0.15s",
+      letterSpacing:"-0.1px",
+    }}>
+      {icon && <span>{icon}</span>}{children}
+    </button>
+  );
+};
+
+const StatCard = ({ label, value, sub, color, icon }) => (
+  <div style={{ background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:"16px 18px" }}>
+    <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10 }}>
+      <span style={{ fontSize:10,color:T.textDim,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.6px" }}>{label}</span>
+      {icon&&<span style={{ fontSize:16,opacity:0.5 }}>{icon}</span>}
+    </div>
+    <div style={{ fontSize:24,fontWeight:800,color:color||T.text,letterSpacing:"-0.5px",marginBottom:3 }}>{value}</div>
+    {sub&&<div style={{ fontSize:11,color:T.textMid }}>{sub}</div>}
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════════
+// SIDEBAR
+// ═══════════════════════════════════════════════════════════════════
+function Sidebar({ active, setActive, newOrdersCount }) {
+  return (
+    <div style={{ width:64,background:T.surface,borderRight:`1px solid ${T.border}`,display:"flex",flexDirection:"column",alignItems:"center",padding:"12px 0",gap:2,flexShrink:0 }}>
+      <div style={{ width:36,height:36,borderRadius:10,background:`linear-gradient(135deg,${T.accent},${T.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:16,color:"#fff",marginBottom:16,boxShadow:`0 4px 14px ${T.accent}40` }}>F</div>
+      {NAV.map(n => (
+        <button key={n.key} onClick={()=>setActive(n.key)} title={n.label} style={{
+          width:44,height:44,borderRadius:12,
+          background:active===n.key?T.accentGlow:"transparent",
+          border:active===n.key?`1px solid ${T.accent}35`:"1px solid transparent",
+          color:active===n.key?T.accent:T.textDim,
+          cursor:"pointer",
+          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+          position:"relative",transition:"all 0.15s",gap:1,
+        }}>
+          <span style={{ fontSize:15 }}>{n.icon}</span>
+          <span style={{ fontSize:8,fontWeight:700,letterSpacing:"0.2px" }}>{n.label.slice(0,3)}</span>
+          {n.key==="delivery" && newOrdersCount>0 && (
+            <div style={{ position:"absolute",top:4,right:4,width:14,height:14,borderRadius:"50%",background:T.red,color:"#fff",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center" }}>{newOrdersCount}</div>
+          )}
+        </button>
+      ))}
+      <div style={{ flex:1 }} />
+      <div style={{ width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${T.accent},${T.gold})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",marginBottom:8 }}>SK</div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// POS SCREEN
+// ═══════════════════════════════════════════════════════════════════
+function POSScreen({ orders, setOrders }) {
+  const [cat, setCat] = useState("All");
+  const [cart, setCart] = useState([]);
+  const [orderType, setOrderType] = useState("Dine In");
+  const [tableNum, setTableNum] = useState("4");
+  const [search, setSearch] = useState("");
+  const [panel, setPanel] = useState("cart");
+  const [discount, setDiscount] = useState(0);
+  const [discountInput, setDiscountInput] = useState("");
+  const [showDiscount, setShowDiscount] = useState(false);
+  const [payMethod, setPayMethod] = useState("card");
+  const [cashInput, setCashInput] = useState("");
+  const [justAdded, setJustAdded] = useState(null);
+  const [checkoutDone, setCheckoutDone] = useState(false);
+
+  const filtered = MENU_ITEMS.filter(i =>
+    i.available &&
+    (cat==="All" || i.cat===cat) &&
+    i.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const addItem = (item) => {
+    setJustAdded(item.id);
+    setTimeout(() => setJustAdded(null), 350);
+    setCart(p => {
+      const ex = p.find(c => c.id===item.id);
+      if (ex) return p.map(c => c.id===item.id ? {...c, qty:c.qty+1} : c);
+      return [...p, {...item, qty:1}];
+    });
+  };
+
+  const setQty = (id, delta) =>
+    setCart(p => p.map(c => c.id===id ? {...c, qty:c.qty+delta} : c).filter(c => c.qty>0));
+
+  const subtotal = cart.reduce((s,c) => s+c.price*c.qty, 0);
+  const discAmt  = discount>0 ? subtotal*(discount/100) : 0;
+  const vat      = (subtotal-discAmt)*0.2;
+  const total    = subtotal-discAmt+vat;
+  const change   = cashInput ? parseFloat(cashInput)-total : 0;
+
+  const fireOrder = () => {
+    setCheckoutDone(true);
+    const o = {
+      id:`#${1043+orders.length}`,
+      time: new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}),
+      items: cart.map(c => ({name:c.name, qty:c.qty})),
+      total, type:orderType, table:tableNum, status:"in-progress", staff:"SK", source:"POS"
+    };
+    setTimeout(() => {
+      setOrders(p => [o,...p]);
+      setCart([]); setDiscount(0); setDiscountInput("");
+      setCashInput(""); setCheckoutDone(false); setPanel("cart");
+    }, 1600);
+  };
+
+  return (
+    <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", borderRight:`1px solid ${T.border}` }}>
+        <div style={{ display:"flex", gap:8, alignItems:"center", padding:"10px 16px", background:T.surface, borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+          <div style={{ position:"relative", flex:1, maxWidth:260 }}>
+            <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:T.textDim, fontSize:15 }}>⌕</span>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search menu..."
+              style={{ width:"100%", background:T.card, border:`1px solid ${T.border}`, borderRadius:10, padding:"8px 10px 8px 30px", color:T.text, fontSize:13, outline:"none", fontFamily:font }} />
+          </div>
+          <div style={{ display:"flex", gap:4 }}>
+            {["Dine In","Takeaway","Delivery"].map(t => (
+              <button key={t} onClick={() => setOrderType(t)} style={{
+                padding:"7px 12px", borderRadius:9, cursor:"pointer", fontSize:12, fontWeight:700,
+                border: orderType===t ? `1px solid ${T.accent}50` : `1px solid ${T.border}`,
+                background: orderType===t ? T.accentGlow : "transparent",
+                color: orderType===t ? T.accent : T.textMid, fontFamily:font,
+              }}>{t}</button>
+            ))}
+          </div>
+          {orderType==="Dine In" && (
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <span style={{ color:T.textDim, fontSize:12, fontWeight:600 }}>Table</span>
+              <input value={tableNum} onChange={e=>setTableNum(e.target.value)}
+                style={{ width:38, background:T.card, border:`1px solid ${T.border}`, borderRadius:8, padding:"7px 6px", color:T.text, fontSize:13, outline:"none", textAlign:"center", fontFamily:font }} />
+            </div>
+          )}
+        </div>
+
+        <div style={{ display:"flex", gap:6, padding:"10px 16px", overflowX:"auto", flexShrink:0, background:T.surface, borderBottom:`1px solid ${T.border}` }}>
+          {CATEGORIES.map(c => (
+            <button key={c} onClick={() => setCat(c)} style={{
+              padding:"5px 14px", borderRadius:20, cursor:"pointer", fontSize:12, fontWeight:700, whiteSpace:"nowrap",
+              border: cat===c ? "none" : `1px solid ${T.border}`,
+              background: cat===c ? T.accent : "transparent",
+              color: cat===c ? "#fff" : T.textMid, fontFamily:font,
+            }}>{c}</button>
+          ))}
+        </div>
+
+        <div style={{ flex:1, overflowY:"auto", padding:14, display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))", gap:10, alignContent:"start" }}>
+          {filtered.map(item => {
+            const inCart = cart.find(c => c.id===item.id);
+            const just   = justAdded===item.id;
+            return (
+              <button key={item.id} onClick={() => addItem(item)} style={{
+                background: just ? T.accentGlow : T.card,
+                border: inCart ? `1px solid ${T.accent}55` : `1px solid ${T.border}`,
+                borderRadius:14, padding:"14px 10px", cursor:"pointer", textAlign:"left", color:T.text,
+                transition:"all 0.15s", position:"relative",
+                transform: just ? "scale(0.96)" : "scale(1)", fontFamily:font,
+              }}>
+                {item.popular && <div style={{ position:"absolute", top:8, right:8, width:6, height:6, borderRadius:"50%", background:T.accent }} />}
+                {inCart && (
+                  <div style={{ position:"absolute", top:-7, right:-7, background:T.accent, color:"#fff", borderRadius:"50%", width:21, height:21, fontSize:11, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 2px 8px ${T.accent}50` }}>{inCart.qty}</div>
+                )}
+                <div style={{ fontSize:24, marginBottom:8 }}>{item.emoji}</div>
+                <div style={{ fontSize:11, fontWeight:700, lineHeight:1.3, marginBottom:4 }}>{item.name}</div>
+                <div style={{ fontSize:13, fontWeight:800, color:T.accent }}>{fmt(item.price)}</div>
+                <div style={{ fontSize:10, color:T.textDim, marginTop:2 }}>
+                  {Math.round(((item.price-item.cost)/item.price)*100)}% margin
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ width:310, display:"flex", flexDirection:"column", background:T.surface, flexShrink:0 }}>
+        {panel==="cart" ? (
+          <>
+            <div style={{ padding:"14px 16px 10px", borderBottom:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div>
+                <div style={{ fontWeight:800, fontSize:14 }}>{orderType==="Dine In" ? `Table ${tableNum}` : orderType}</div>
+                <div style={{ fontSize:11, color:T.textDim }}>{cart.length} item{cart.length!==1?"s":""}</div>
+              </div>
+              {cart.length>0 && <Btn variant="danger" small onClick={() => setCart([])}>Clear</Btn>}
+            </div>
+
+            <div style={{ flex:1, overflowY:"auto", padding:"6px 0" }}>
+              {cart.length===0 ? (
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", height:"100%", gap:8, color:T.textDim }}>
+                  <div style={{ fontSize:36, opacity:0.2 }}>◫</div>
+                  <div style={{ fontSize:13 }}>Cart is empty</div>
+                  <div style={{ fontSize:11 }}>Tap items to add</div>
+                </div>
+              ) : cart.map(item => (
+                <div key={item.id} style={{ display:"flex", alignItems:"center", padding:"9px 16px", gap:10, borderBottom:`1px solid ${T.border}15` }}>
+                  <span style={{ fontSize:16 }}>{item.emoji}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, fontWeight:700 }}>{item.name}</div>
+                    <div style={{ fontSize:11, color:T.textMid }}>{fmt(item.price)}</div>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                    <button onClick={() => setQty(item.id,-1)} style={{ width:22,height:22,borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMid,cursor:"pointer",fontSize:14 }}>−</button>
+                    <span style={{ fontSize:13,fontWeight:800,minWidth:14,textAlign:"center" }}>{item.qty}</span>
+                    <button onClick={() => setQty(item.id,+1)} style={{ width:22,height:22,borderRadius:6,border:`1px solid ${T.accent}50`,background:T.accentGlow,color:T.accent,cursor:"pointer",fontSize:14 }}>+</button>
+                  </div>
+                  <div style={{ fontSize:12,fontWeight:800,minWidth:40,textAlign:"right" }}>{fmt(item.price*item.qty)}</div>
+                </div>
+              ))}
+            </div>
+
+            {cart.length>0 && (
+              <div style={{ padding:"8px 16px", borderTop:`1px solid ${T.border}` }}>
+                {showDiscount ? (
+                  <div style={{ display:"flex", gap:6 }}>
+                    <input value={discountInput} onChange={e=>setDiscountInput(e.target.value)} placeholder="% off" type="number"
+                      style={{ flex:1, background:T.card, border:`1px solid ${T.border}`, borderRadius:8, padding:"7px 10px", color:T.text, fontSize:13, outline:"none", fontFamily:font }} />
+                    <Btn small onClick={() => { setDiscount(parseFloat(discountInput)||0); setShowDiscount(false); }}>Apply</Btn>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowDiscount(true)} style={{ background:"transparent", border:`1px dashed ${T.border}`, color:T.textMid, borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:12, fontWeight:600, width:"100%", fontFamily:font }}>
+                    {discount>0 ? `✓ ${discount}% discount applied` : "+ Add discount"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {cart.length>0 && (
+              <div style={{ padding:"10px 16px", borderTop:`1px solid ${T.border}` }}>
+                {[["Subtotal", fmt(subtotal)],
+                  ...(discount>0 ? [[`Disc. ${discount}%`, `−${fmt(discAmt)}`]] : []),
+                  ["VAT (20%)", fmt(vat)],
+                ].map(([l,v]) => (
+                  <div key={l} style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:T.textMid, marginBottom:4 }}>
+                    <span>{l}</span>
+                    <span style={l.startsWith("Disc") ? {color:T.green} : {}}>{v}</span>
+                  </div>
+                ))}
+                <div style={{ display:"flex", justifyContent:"space-between", fontSize:19, fontWeight:900, marginTop:8, paddingTop:8, borderTop:`1px solid ${T.border}`, letterSpacing:"-0.4px" }}>
+                  <span>Total</span>
+                  <span style={{ color:T.accent }}>{fmt(total)}</span>
+                </div>
+              </div>
+            )}
+
+            <div style={{ padding:"0 16px 16px" }}>
+              <Btn full disabled={cart.length===0} onClick={() => setPanel("checkout")}>
+                {cart.length>0 ? `Charge ${fmt(total)}` : "Add items to charge"}
+              </Btn>
+            </div>
+          </>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", height:"100%" }}>
+            <div style={{ padding:"14px 16px", borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", gap:10 }}>
+              <button onClick={() => setPanel("cart")} style={{ background:"transparent", border:"none", color:T.textMid, cursor:"pointer", fontSize:20 }}>←</button>
+              <div>
+                <div style={{ fontWeight:800, fontSize:14 }}>Checkout</div>
+                <div style={{ fontSize:11, color:T.textDim }}>{fmt(total)} due</div>
+              </div>
+            </div>
+
+            <div style={{ flex:1, overflowY:"auto", padding:16, display:"flex", flexDirection:"column", gap:16 }}>
+              <div>
+                <div style={{ fontSize:10, color:T.textDim, marginBottom:8, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.8px" }}>Payment Method</div>
+                <div style={{ display:"flex", gap:8 }}>
+                  {[{k:"card",l:"Card",i:"💳"},{k:"cash",l:"Cash",i:"💷"},{k:"split",l:"Split",i:"⟺"}].map(m => (
+                    <button key={m.k} onClick={() => setPayMethod(m.k)} style={{
+                      flex:1, padding:"10px 6px", borderRadius:10, cursor:"pointer",
+                      border: payMethod===m.k ? `1px solid ${T.accent}55` : `1px solid ${T.border}`,
+                      background: payMethod===m.k ? T.accentGlow : T.card,
+                      color: payMethod===m.k ? T.accent : T.textMid,
+                      fontSize:11, fontWeight:700, display:"flex", flexDirection:"column", alignItems:"center", gap:4, fontFamily:font,
+                    }}>
+                      <span style={{ fontSize:18 }}>{m.i}</span>{m.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {payMethod==="cash" && (
+                <div>
+                  <div style={{ fontSize:10, color:T.textDim, marginBottom:8, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.8px" }}>Cash Tendered</div>
+                  <div style={{ position:"relative" }}>
+                    <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:T.textMid, fontSize:16, fontWeight:700 }}>£</span>
+                    <input value={cashInput} onChange={e=>setCashInput(e.target.value)} type="number" placeholder="0.00"
+                      style={{ width:"100%", background:T.card, border:`1px solid ${T.borderLight}`, borderRadius:10, padding:"12px 12px 12px 28px", color:T.text, fontSize:22, fontWeight:800, outline:"none", fontFamily:"'DM Mono',monospace" }} />
+                  </div>
+                  {cashInput && change>=0 && (
+                    <div style={{ marginTop:8, padding:"10px 14px", background:T.greenGlow, borderRadius:10, display:"flex", justifyContent:"space-between" }}>
+                      <span style={{ color:T.green, fontSize:13, fontWeight:700 }}>Change due</span>
+                      <span style={{ color:T.green, fontSize:16, fontWeight:900 }}>{fmt(change)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ background:T.card, borderRadius:12, padding:14, border:`1px solid ${T.border}` }}>
+                {cart.map(item => (
+                  <div key={item.id} style={{ display:"flex", justifyContent:"space-between", fontSize:12, color:T.textMid, marginBottom:4 }}>
+                    <span>{item.qty}× {item.name}</span>
+                    <span>{fmt(item.price*item.qty)}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}`, display:"flex", justifyContent:"space-between", fontWeight:900, fontSize:17 }}>
+                  <span>Total</span>
+                  <span style={{ color:T.accent }}>{fmt(total)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding:"0 16px 16px" }}>
+              {checkoutDone ? (
+                <div style={{ padding:"14px", background:T.greenGlow, border:`1px solid ${T.green}35`, borderRadius:14, color:T.green, fontSize:14, fontWeight:800, textAlign:"center" }}>
+                  ✓ Order fired to kitchen!
+                </div>
+              ) : (
+                <Btn full onClick={fireOrder}>Confirm & Send Order</Btn>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ORDERS / KITCHEN SCREEN
+// ═══════════════════════════════════════════════════════════════════
+function OrdersScreen({ orders, setOrders, kitchenMode }) {
+  const cols = kitchenMode
+    ? [{key:"in-progress",label:"Cooking",color:T.gold},{key:"ready",label:"Ready to Serve",color:T.green}]
+    : [{key:"new",label:"New",color:T.red},{key:"in-progress",label:"In Progress",color:T.gold},{key:"ready",label:"Ready",color:T.accent},{key:"completed",label:"Completed",color:T.green}];
+
+  const bump = (id) => setOrders(p => p.map(o => {
+    if (o.id!==id) return o;
+    const next = { new:"in-progress", "in-progress":"ready", "ready":"completed" };
+    return { ...o, status: next[o.status] || o.status };
+  }));
+
+  const sourceLabel = (src) => ({ UBER_EATS:"Uber Eats", DELIVEROO:"Deliveroo", JUST_EAT:"Just Eat", POS:"POS", DIRECT_QR:"QR Order" }[src] || "POS");
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 20px", borderBottom:`1px solid ${T.border}`, background:T.surface }}>
+        <div>
+          <h2 style={{ margin:0, fontSize:17, fontWeight:800 }}>{kitchenMode ? "🍳 Kitchen Display" : "Live Orders"}</h2>
+          <p style={{ margin:"2px 0 0", fontSize:12, color:T.textDim }}>{orders.filter(o=>o.status!=="completed").length} active · synced live</p>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:6, background:T.greenGlow, padding:"6px 12px", borderRadius:20, border:`1px solid ${T.green}30` }}>
+          <div style={{ width:7,height:7,borderRadius:"50%",background:T.green }} />
+          <span style={{ color:T.green, fontSize:12, fontWeight:700 }}>Live</span>
+        </div>
+      </div>
+
+      <div style={{ flex:1, overflowY:"auto", padding:16 }}>
+        <div style={{ display:"grid", gridTemplateColumns:`repeat(${cols.length},1fr)`, gap:14 }}>
+          {cols.map(col => (
+            <div key={col.key}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:12 }}>
+                <div style={{ width:8,height:8,borderRadius:"50%",background:col.color }} />
+                <span style={{ fontSize:11,fontWeight:800,color:T.textMid,textTransform:"uppercase",letterSpacing:"0.7px" }}>{col.label}</span>
+                <span style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:20, padding:"1px 8px", fontSize:10, color:T.textDim }}>
+                  {orders.filter(o=>o.status===col.key).length}
+                </span>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {orders.filter(o=>o.status===col.key).map(order => (
+                  <div key={order.id} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:14, padding:kitchenMode ? 20 : 16, borderLeft:`3px solid ${order.platformColor || col.color}` }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                      <div>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          {order.platformIcon && <span style={{ fontSize:14 }}>{order.platformIcon}</span>}
+                          <span style={{ fontWeight:900, fontSize: kitchenMode ? 20 : 15 }}>{order.id}</span>
+                        </div>
+                        {order.type==="Dine In" && <div style={{ fontSize:12, color:T.accent, fontWeight:700, marginTop:2 }}>Table {order.table}</div>}
+                      </div>
+                      <div style={{ textAlign:"right" }}>
+                        <div style={{ fontSize:11, color:T.textDim }}>{order.time}</div>
+                        <Pill color={order.source==="POS" ? T.blue : order.platformColor || T.gold}>{sourceLabel(order.source)}</Pill>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:12 }}>
+                      {order.items.map((it,i) => (
+                        <div key={i} style={{ display:"flex", alignItems:"center", gap:8, background:T.bg, borderRadius:8, padding:"7px 10px" }}>
+                          <span style={{ fontWeight:900, color:T.accent, fontSize: kitchenMode ? 16 : 14, minWidth:24 }}>{it.qty}×</span>
+                          <span style={{ fontSize: kitchenMode ? 15 : 13, fontWeight:600 }}>{it.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {!kitchenMode && (
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <span style={{ fontWeight:900, fontSize:16, color:T.accent }}>{fmt(order.total)}</span>
+                        {order.staff!=="—" && <span style={{ fontSize:11, color:T.textDim }}>by {order.staff}</span>}
+                      </div>
+                    )}
+                    {col.key!=="completed" && (
+                      <button onClick={() => bump(order.id)} style={{
+                        marginTop:10, width:"100%", padding:"9px",
+                        background: T.accentGlow, border: `1px solid ${T.accent}40`, color:T.accent,
+                        borderRadius:10, cursor:"pointer", fontSize:12, fontWeight:800, fontFamily:font,
+                      }}>
+                        {col.key==="new" ? "Accept →" : col.key==="in-progress" ? "Mark Ready →" : "Complete ✓"}
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {orders.filter(o=>o.status===col.key).length===0 && (
+                  <div style={{ border:`1px dashed ${T.border}`, borderRadius:14, padding:24, textAlign:"center", color:T.textDim, fontSize:13 }}>No orders here</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DELIVERY SCREEN
+// ═══════════════════════════════════════════════════════════════════
+function DeliveryScreen() {
+  const [tab, setTab] = useState("platforms");
+  const totalRevenue = PLATFORMS.reduce((s,p)=>s+p.revenueToday,0);
+  const totalOrders  = PLATFORMS.reduce((s,p)=>s+p.ordersToday,0);
+  const totalCommission = PLATFORMS.reduce((s,p)=>s+(p.revenueToday*p.commission/100),0);
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+      <div style={{ padding:"14px 20px", borderBottom:`1px solid ${T.border}`, background:T.surface }}>
+        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:14 }}>
+          <div>
+            <h2 style={{ margin:0, fontSize:17, fontWeight:800 }}>Delivery Hub</h2>
+            <p style={{ margin:"2px 0 0", fontSize:12, color:T.textDim }}>{PLATFORMS.filter(p=>p.connected).length} platforms connected · {totalOrders} orders today</p>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:6, background:T.greenGlow, padding:"6px 12px", borderRadius:20, border:`1px solid ${T.green}30` }}>
+            <div style={{ width:7,height:7,borderRadius:"50%",background:T.green }} />
+            <span style={{ color:T.green, fontSize:12, fontWeight:700 }}>Live</span>
+          </div>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10 }}>
+          {[
+            { l:"Gross Revenue", v:fmt(totalRevenue), c:T.text },
+            { l:"Commission", v:fmt(totalCommission), c:T.red },
+            { l:"Net Revenue", v:fmt(totalRevenue-totalCommission), c:T.green },
+            { l:"Total Orders", v:totalOrders, c:T.gold },
+            { l:"Avg Order", v:fmt(totalRevenue/Math.max(totalOrders,1)), c:T.accent },
+          ].map(k => (
+            <div key={k.l} style={{ background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 14px" }}>
+              <div style={{ fontSize:9,color:T.textDim,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:4 }}>{k.l}</div>
+              <div style={{ fontSize:16,fontWeight:900,color:k.c }}>{k.v}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display:"flex", gap:4, marginTop:14 }}>
+          {[{k:"platforms",l:"Platforms"},{k:"analytics",l:"Analytics"}].map(t => (
+            <button key={t.k} onClick={()=>setTab(t.k)} style={{
+              padding:"6px 16px", borderRadius:9, cursor:"pointer", fontSize:12, fontWeight:700,
+              border: tab===t.k ? `1px solid ${T.accent}50` : `1px solid ${T.border}`,
+              background: tab===t.k ? T.accentGlow : "transparent",
+              color: tab===t.k ? T.accent : T.textMid, fontFamily:font,
+            }}>{t.l}</button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ flex:1, overflowY:"auto", padding:16 }}>
+        {tab==="platforms" && (
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:14 }}>
+            {PLATFORMS.map(p => {
+              const net = p.revenueToday*(1-p.commission/100);
+              return (
+                <div key={p.id} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16, padding:18, borderLeft:`3px solid ${p.color}` }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <div style={{ width:38,height:38,borderRadius:10,background:p.color+"20",border:`1px solid ${p.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20 }}>{p.icon}</div>
+                      <div>
+                        <div style={{ fontWeight:800,fontSize:14 }}>{p.name}</div>
+                        <Pill color={T.green}>● Connected</Pill>
+                      </div>
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontSize:11,color:T.textDim }}>Commission</div>
+                      <div style={{ fontWeight:900,fontSize:18,color:p.commission===0?T.green:T.red }}>{p.commission}%</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:14 }}>
+                    {[["Orders",p.ordersToday,T.gold],["Gross",fmt(p.revenueToday),T.text],["Net",fmt(net),T.green]].map(([l,v,c]) => (
+                      <div key={l} style={{ background:T.bg,borderRadius:9,padding:"8px 10px" }}>
+                        <div style={{ fontSize:9,color:T.textDim,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:3 }}>{l}</div>
+                        <div style={{ fontSize:14,fontWeight:800,color:c }}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div>
+                    <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:T.textDim, marginBottom:4 }}>
+                      <span>You keep</span>
+                      <span style={{ color:T.green, fontWeight:700 }}>{100-p.commission}%</span>
+                    </div>
+                    <div style={{ height:6, background:T.bg, borderRadius:3, overflow:"hidden", display:"flex" }}>
+                      <div style={{ width:`${100-p.commission}%`, background:T.green }} />
+                      <div style={{ flex:1, background:T.red, opacity:0.4 }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tab==="analytics" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16, padding:20 }}>
+              <div style={{ fontSize:14, fontWeight:800, marginBottom:16 }}>Revenue by Platform — Today</div>
+              {PLATFORMS.sort((a,b)=>b.revenueToday-a.revenueToday).map(p => {
+                const pct = (p.revenueToday/totalRevenue)*100;
+                const net = p.revenueToday*(1-p.commission/100);
+                return (
+                  <div key={p.id} style={{ marginBottom:14 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <span style={{ fontSize:16 }}>{p.icon}</span>
+                        <span style={{ fontWeight:700, fontSize:13 }}>{p.name}</span>
+                        {p.commission>0 && <Pill color={T.red}>−{p.commission}%</Pill>}
+                      </div>
+                      <div>
+                        <span style={{ fontWeight:800, fontSize:14 }}>{fmt(p.revenueToday)}</span>
+                        <span style={{ fontSize:11, color:T.textDim, marginLeft:8 }}>net {fmt(net)}</span>
+                      </div>
+                    </div>
+                    <div style={{ height:10, background:T.bg, borderRadius:5, overflow:"hidden", display:"flex" }}>
+                      <div style={{ width:`${pct*(1-p.commission/100)}%`, background:T.green }} />
+                      <div style={{ width:`${pct*(p.commission/100)}%`, background:T.red, opacity:0.5 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ background:T.redGlow, border:`1px solid ${T.red}25`, borderRadius:16, padding:20 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:T.red, marginBottom:4 }}>⚠ Commission Drain</div>
+              <div style={{ fontSize:12, color:T.textMid, lineHeight:1.6 }}>
+                You're paying <strong style={{ color:T.red }}>{fmt(totalCommission)}</strong> in platform fees today. That's <strong style={{ color:T.red }}>{Math.round((totalCommission/totalRevenue)*100)}%</strong> of gross revenue lost to commissions.
+              </div>
+              <div style={{ marginTop:14, padding:"10px 14px", background:"rgba(201,84,84,0.08)", borderRadius:10 }}>
+                <div style={{ fontSize:12, fontWeight:700, marginBottom:4 }}>💡 Tip: Grow your Direct QR channel</div>
+                <div style={{ fontSize:11, color:T.textMid }}>Direct orders cost 0% commission. Push your QR menu to convert delivery customers and save money every day.</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ANALYTICS SCREEN
+// ═══════════════════════════════════════════════════════════════════
+function AnalyticsScreen() {
+  const maxRev = Math.max(...HOURLY.map(h=>h.rev));
+  const topItems = [...MENU_ITEMS].sort((a,b) => b.price-a.price).slice(0,6);
+
+  return (
+    <div style={{ flex:1, overflowY:"auto", padding:20 }}>
+      <div style={{ marginBottom:20 }}>
+        <h2 style={{ margin:0, fontSize:19, fontWeight:800 }}>Analytics & Insights</h2>
+        <p style={{ margin:"4px 0 0", fontSize:13, color:T.textDim }}>Today · April 22 2026</p>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12, marginBottom:20 }}>
+        <StatCard label="Revenue" value="£1,842" sub="↑ 14% vs yesterday" color={T.accent} icon="💰" />
+        <StatCard label="Orders" value="67" sub="3 active now" color={T.gold} icon="◫" />
+        <StatCard label="Avg Basket" value="£27.49" sub="↑ from £24.10" color={T.green} icon="🧺" />
+        <StatCard label="Gross Margin" value="71.4%" sub="Target: 68%" color={T.blue} icon="📈" />
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:16, marginBottom:20 }}>
+        <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16, padding:20 }}>
+          <div style={{ fontSize:13, fontWeight:800, marginBottom:16 }}>Revenue by Hour</div>
+          <div style={{ display:"flex", alignItems:"flex-end", gap:6, height:120 }}>
+            {HOURLY.map(h => (
+              <div key={h.h} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                <div style={{ width:"100%", borderRadius:"4px 4px 0 0", background: h.rev===maxRev ? T.accent : `${T.accent}35`, height: `${(h.rev/maxRev)*100}px`, minHeight:4, position:"relative" }}>
+                  {h.rev===maxRev && <div style={{ position:"absolute", top:-22, left:"50%", transform:"translateX(-50%)", background:T.accent, color:"#fff", borderRadius:6, padding:"2px 6px", fontSize:10, fontWeight:800, whiteSpace:"nowrap" }}>£{h.rev}</div>}
+                </div>
+                <span style={{ fontSize:9, color:T.textDim, fontWeight:600 }}>{h.h}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16, padding:20 }}>
+          <div style={{ fontSize:13, fontWeight:800, marginBottom:16 }}>Order Type Split</div>
+          {[
+            { label:"Dine In", pct:58, color:T.accent },
+            { label:"Takeaway", pct:32, color:T.gold },
+            { label:"Delivery", pct:10, color:T.blue },
+          ].map(row => (
+            <div key={row.label} style={{ marginBottom:14 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:5 }}>
+                <span style={{ color:T.textMid, fontWeight:600 }}>{row.label}</span>
+                <span style={{ color:row.color, fontWeight:800 }}>{row.pct}%</span>
+              </div>
+              <div style={{ height:6, background:T.bg, borderRadius:3, overflow:"hidden" }}>
+                <div style={{ height:"100%", width:`${row.pct}%`, background:row.color }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+        <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16, padding:20 }}>
+          <div style={{ fontSize:13, fontWeight:800, marginBottom:14 }}>Top Selling Items</div>
+          {topItems.map((item, i) => {
+            const margin = Math.round(((item.price-item.cost)/item.price)*100);
+            return (
+              <div key={item.id} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
+                <span style={{ fontSize:11, color:T.textDim, fontWeight:700, minWidth:14 }}>#{i+1}</span>
+                <span style={{ fontSize:18 }}>{item.emoji}</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:12, fontWeight:700 }}>{item.name}</div>
+                  <div style={{ fontSize:10, color:T.textDim }}>Margin: <span style={{ color:margin>65?T.green:T.gold }}>{margin}%</span></div>
+                </div>
+                <div style={{ fontSize:12, fontWeight:800, color:T.accent }}>{fmt(item.price)}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16, padding:20 }}>
+          <div style={{ fontSize:13, fontWeight:800, marginBottom:14 }}>Staff Performance</div>
+          {STAFF.map(s => (
+            <div key={s.id} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14, padding:"10px 12px", background:T.bg, borderRadius:10 }}>
+              <div style={{ width:34,height:34,borderRadius:"50%",background:`linear-gradient(135deg,${T.accent},${T.gold})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#fff" }}>{s.avatar}</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, fontWeight:700 }}>{s.name}</div>
+                <div style={{ fontSize:11, color:T.textDim }}>{s.role} · {s.hours}h today</div>
+              </div>
+              <div style={{ textAlign:"right" }}>
+                <div style={{ fontSize:13, fontWeight:800, color:T.accent }}>{s.sales>0 ? fmt(s.sales) : "—"}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MENU / STAFF / SETTINGS SCREENS (simplified placeholders)
+// ═══════════════════════════════════════════════════════════════════
+function MenuScreen() {
+  const [items, setItems] = useState(MENU_ITEMS);
+  const toggle = (id) => setItems(p => p.map(i => i.id===id ? {...i, available:!i.available} : i));
+
+  return (
+    <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+      <div style={{ padding:"14px 20px", borderBottom:`1px solid ${T.border}`, background:T.surface, display:"flex", justifyContent:"space-between" }}>
+        <div>
+          <h2 style={{ margin:0, fontSize:17, fontWeight:800 }}>Menu Management</h2>
+          <p style={{ margin:"2px 0 0", fontSize:12, color:T.textDim }}>{items.length} items · {items.filter(i=>!i.available).length} unavailable</p>
+        </div>
+        <Btn icon="+">Add Item</Btn>
+      </div>
+
+      <div style={{ flex:1, overflowY:"auto" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+          <thead>
+            <tr style={{ background:T.surface }}>
+              {["Item","Category","Price","Cost","Margin","Stock",""].map(h => (
+                <th key={h} style={{ padding:"10px 16px", textAlign:"left", fontSize:10, color:T.textDim, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.7px", borderBottom:`1px solid ${T.border}` }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(item => {
+              const margin = Math.round(((item.price-item.cost)/item.price)*100);
+              return (
+                <tr key={item.id} style={{ borderBottom:`1px solid ${T.border}15` }}>
+                  <td style={{ padding:"12px 16px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ fontSize:20 }}>{item.emoji}</span>
+                      <div>
+                        <div style={{ fontSize:13, fontWeight:700, color: item.available ? T.text : T.textDim }}>{item.name}</div>
+                        {item.popular && <span style={{ fontSize:9, color:T.accent, fontWeight:700 }}>★ POPULAR</span>}
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding:"12px 16px" }}><Pill color={T.blue}>{item.cat}</Pill></td>
+                  <td style={{ padding:"12px 16px", fontWeight:800, color:T.accent }}>{fmt(item.price)}</td>
+                  <td style={{ padding:"12px 16px", color:T.textMid }}>{fmt(item.cost)}</td>
+                  <td style={{ padding:"12px 16px" }}><Pill color={margin>65?T.green:T.gold}>{margin}%</Pill></td>
+                  <td style={{ padding:"12px 16px" }}><Toggle on={item.available} onChange={() => toggle(item.id)} /></td>
+                  <td style={{ padding:"12px 16px" }}><Btn small variant="secondary">Edit</Btn></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StaffScreen() {
+  const [clockedIn, setClockedIn] = useState({1:true, 2:true, 3:true});
+  return (
+    <div style={{ flex:1, overflowY:"auto", padding:20 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:20 }}>
+        <div>
+          <h2 style={{ margin:0, fontSize:19, fontWeight:800 }}>Staff</h2>
+          <p style={{ margin:"4px 0 0", fontSize:13, color:T.textDim }}>Shift management & performance</p>
+        </div>
+        <Btn icon="+">Add Staff Member</Btn>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:14 }}>
+        {STAFF.map(s => (
+          <div key={s.id} style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16, padding:20 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16 }}>
+              <div style={{ width:44,height:44,borderRadius:"50%",background:`linear-gradient(135deg,${T.accent},${T.gold})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:900,color:"#fff" }}>{s.avatar}</div>
+              <div>
+                <div style={{ fontWeight:800, fontSize:15 }}>{s.name}</div>
+                <Pill color={s.role==="Manager"?T.accent:s.role==="Cashier"?T.blue:T.green}>{s.role}</Pill>
+              </div>
+              <div style={{ marginLeft:"auto" }}>
+                <div style={{ width:10, height:10, borderRadius:"50%", background: clockedIn[s.id] ? T.green : T.textDim, boxShadow: clockedIn[s.id] ? `0 0 8px ${T.green}` : "none" }} />
+              </div>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14 }}>
+              <div style={{ background:T.bg, borderRadius:10, padding:"10px 12px" }}>
+                <div style={{ fontSize:10, color:T.textDim, marginBottom:2, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px" }}>Hours</div>
+                <div style={{ fontSize:18, fontWeight:900 }}>{s.hours}h</div>
+              </div>
+              <div style={{ background:T.bg, borderRadius:10, padding:"10px 12px" }}>
+                <div style={{ fontSize:10, color:T.textDim, marginBottom:2, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.5px" }}>Sales</div>
+                <div style={{ fontSize:18, fontWeight:900, color:T.accent }}>{s.sales>0 ? fmtK(s.sales) : "—"}</div>
+              </div>
+            </div>
+            <button onClick={() => setClockedIn(p => ({...p, [s.id]:!p[s.id]}))} style={{
+              width:"100%", padding:"9px",
+              background: clockedIn[s.id] ? T.redGlow : T.greenGlow,
+              border: `1px solid ${clockedIn[s.id] ? T.red : T.green}35`,
+              color: clockedIn[s.id] ? T.red : T.green,
+              borderRadius:10, cursor:"pointer", fontSize:12, fontWeight:800, fontFamily:font,
+            }}>{clockedIn[s.id] ? "Clock Out" : "Clock In"}</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SettingsScreen() {
+  return (
+    <div style={{ flex:1, overflowY:"auto", padding:20 }}>
+      <div style={{ marginBottom:20 }}>
+        <h2 style={{ margin:0, fontSize:19, fontWeight:800 }}>Settings</h2>
+        <p style={{ margin:"4px 0 0", fontSize:13, color:T.textDim }}>Configure your Flick POS</p>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+        <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16, padding:20 }}>
+          <div style={{ fontSize:14, fontWeight:800, marginBottom:16 }}>🏪 Business Profile</div>
+          {[
+            { label:"Business Name", value:"Flick Café" },
+            { label:"Address", value:"14 Bridge St, Sheffield S1 2GJ" },
+            { label:"VAT Number", value:"GB123456789" },
+          ].map(f => (
+            <div key={f.label} style={{ marginBottom:14 }}>
+              <div style={{ fontSize:10, color:T.textDim, marginBottom:5, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.6px" }}>{f.label}</div>
+              <input defaultValue={f.value} style={{ width:"100%", background:T.bg, border:`1px solid ${T.border}`, borderRadius:9, padding:"9px 12px", color:T.text, fontSize:13, outline:"none", boxSizing:"border-box", fontFamily:font }} />
+            </div>
+          ))}
+          <Btn>Save</Btn>
+        </div>
+
+        <div style={{ background:T.card, border:`1px solid ${T.border}`, borderRadius:16, padding:20 }}>
+          <div style={{ fontSize:14, fontWeight:800, marginBottom:16 }}>🔗 Integrations</div>
+          {[
+            { name:"Stripe Payments", status:"connected", color:T.green, icon:"💳" },
+            { name:"Uber Eats", status:"connected", color:T.green, icon:"🛵" },
+            { name:"Deliveroo", status:"connected", color:T.green, icon:"🦘" },
+            { name:"Just Eat", status:"connected", color:T.green, icon:"🍔" },
+            { name:"Xero Accounting", status:"not connected", color:T.textDim, icon:"📊" },
+          ].map(int => (
+            <div key={int.name} style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10, padding:"10px 12px", background:T.bg, borderRadius:10, border:`1px solid ${T.border}` }}>
+              <span style={{ fontSize:20 }}>{int.icon}</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, fontWeight:700 }}>{int.name}</div>
+                <Pill color={int.color}>{int.status}</Pill>
+              </div>
+              <Btn small variant={int.status==="connected" ? "success" : "secondary"}>
+                {int.status==="connected" ? "Manage" : "Connect"}
+              </Btn>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ROOT APP
+// ═══════════════════════════════════════════════════════════════════
+function FlickApp() {
+  const [screen, setScreen] = useState("pos");
+  const [orders, setOrders] = useState(INIT_ORDERS);
+  const newOrdersCount = orders.filter(o => o.status==="new").length;
+
+  const render = () => {
+    switch(screen) {
+      case "pos":       return <POSScreen orders={orders} setOrders={setOrders} />;
+      case "orders":    return <OrdersScreen orders={orders} setOrders={setOrders} kitchenMode={false} />;
+      case "kitchen":   return <OrdersScreen orders={orders} setOrders={setOrders} kitchenMode={true} />;
+      case "delivery":  return <DeliveryScreen />;
+      case "analytics": return <AnalyticsScreen />;
+      case "menu":      return <MenuScreen />;
+      case "staff":     return <StaffScreen />;
+      case "settings":  return <SettingsScreen />;
+      default:          return <POSScreen orders={orders} setOrders={setOrders} />;
+    }
+  };
+
+  return (
+    <div style={{ fontFamily:font, background:T.bg, color:T.text, height:"100vh", display:"flex", overflow:"hidden" }}>
+      <Sidebar active={screen} setActive={setScreen} newOrdersCount={newOrdersCount} />
+      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        <div style={{ height:50, background:T.surface, borderBottom:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 20px", flexShrink:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ fontWeight:800, fontSize:15, letterSpacing:"-0.3px" }}>{NAV.find(n=>n.key===screen)?.label}</span>
+            <Pill color={T.green}>● Live</Pill>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+            <div style={{ textAlign:"right" }}>
+              <div style={{ fontSize:12, fontWeight:700 }}>Sara K</div>
+              <div style={{ fontSize:10, color:T.textDim }}>Manager · Morning Shift</div>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:6, background:T.accentGlow, padding:"5px 10px", borderRadius:20, border:`1px solid ${T.accent}30` }}>
+              <div style={{ width:6,height:6,borderRadius:"50%",background:T.accent }} />
+              <span style={{ fontSize:11, color:T.accent, fontWeight:700 }}>Online</span>
+            </div>
+          </div>
+        </div>
+        {render()}
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<FlickApp />);
+
+</script>
+</body>
+</html>
