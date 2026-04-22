@@ -1,0 +1,34 @@
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# editor
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# prisma
+server/prisma/migrations/.migrate.tmp
+
+# test
+coverage/
+.nyc_output/
+
+# misc
+*.pem
+*.key

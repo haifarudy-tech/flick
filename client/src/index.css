@@ -1,0 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: theme('colors.bg');
+    color: theme('colors.text');
+    font-family: theme('fontFamily.sans');
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'ss01', 'cv11';
+  }
+  .num {
+    font-family: theme('fontFamily.mono');
+    font-variant-numeric: tabular-nums;
+  }
+}
