@@ -42,7 +42,7 @@ export function makeDeliveryWebhook(platformKey: keyof typeof PLATFORMS) {
       const meta = PLATFORMS[platformKey];
       if (!meta) throw badRequest('Unknown platform');
 
-      const secret = (env as Record<string, string | undefined>)[meta.secretEnv];
+      const secret = (env as unknown as Record<string, string | undefined>)[meta.secretEnv];
       if (!secret) {
         logger.error({ platform: meta.key }, 'missing webhook secret');
         throw unauthorized('Webhook not configured');

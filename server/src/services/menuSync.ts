@@ -1,5 +1,5 @@
 import { Queue } from 'bullmq';
-import IORedis from 'ioredis';
+import { Redis } from 'ioredis';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
 
@@ -7,7 +7,7 @@ let queue: Queue | null = null;
 
 function getConnection() {
   if (!env.REDIS_URL) return null;
-  return new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
+  return new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
 }
 
 export function getMenuSyncQueue(): Queue | null {

@@ -10,6 +10,8 @@ import { ProductGrid } from '@/components/pos/ProductGrid';
 import { CartPanel } from '@/components/pos/CartPanel';
 import { CheckoutPanel, type CheckoutResult } from '@/components/pos/CheckoutPanel';
 import { ReceiptModal, type ReceiptInfo } from '@/components/pos/ReceiptModal';
+import { HoldsPanel } from '@/components/pos/HoldsPanel';
+import { useOfflineFlusher } from '@/hooks/useCreateOrder';
 import { api } from '@/lib/api';
 
 // --- POS Terminal ---------------------------------------------------------
@@ -45,9 +47,14 @@ export function PosPage() {
   const [categoryId, setCategoryId] = useState('all');
   const [view, setView] = useState<'cart' | 'checkout'>('cart');
   const [receipt, setReceipt] = useState<ReceiptInfo | null>(null);
+  const [showHolds, setShowHolds] = useState(false);
+
+  const heldCount = useCartStore((s) => s.held.length);
+  const hold = useCartStore((s) => s.hold);
 
   const menu = useMenu();
   const createOrder = useCreateOrder();
+  const { pending: offlinePending } = useOfflineFlusher();
 
   const filteredItems = useMemo(() => {
     if (!menu.data) return [];
@@ -132,6 +139,9 @@ export function PosPage() {
           onTypeChange={setType}
           tableNumber={tableNumber}
           onTableChange={setTable}
+          heldCount={heldCount}
+          onOpenHolds={() => setShowHolds(true)}
+          offlinePending={offlinePending}
         />
 
         {menu.isLoading ? (
@@ -170,12 +180,7 @@ export function PosPage() {
         }}
       >
         {view === 'cart' ? (
-          <CartPanel
-            onCharge={() => setView('checkout')}
-            onHold={() => {
-              /* chunk 5 */
-            }}
-          />
+          <CartPanel onCharge={() => setView('checkout')} onHold={hold} />
         ) : (
           <CheckoutPanel
             onBack={() => setView('cart')}
@@ -186,6 +191,7 @@ export function PosPage() {
       </aside>
 
       {receipt && <ReceiptModal info={receipt} onClose={() => setReceipt(null)} />}
+      {showHolds && <HoldsPanel onClose={() => setShowHolds(false)} />}
     </div>
   );
 }
@@ -200,6 +206,9 @@ function PosHeader({
   onTypeChange,
   tableNumber,
   onTableChange,
+  heldCount,
+  onOpenHolds,
+  offlinePending,
 }: {
   search: string;
   onSearch: (s: string) => void;
@@ -207,7 +216,11 @@ function PosHeader({
   onTypeChange: (t: OrderType) => void;
   tableNumber: string;
   onTableChange: (s: string) => void;
+  heldCount: number;
+  onOpenHolds: () => void;
+  offlinePending: number;
 }) {
+  const online = typeof navigator !== 'undefined' ? navigator.onLine : true;
   return (
     <div
       style={{
@@ -295,6 +308,80 @@ function PosHeader({
           />
         </div>
       )}
+
+      {/* Right-edge toolbar: held orders button + offline indicator */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+        {(!online || offlinePending > 0) && (
+          <div
+            title={
+              !online
+                ? `Offline · ${offlinePending} order${offlinePending !== 1 ? 's' : ''} queued`
+                : `${offlinePending} order${offlinePending !== 1 ? 's' : ''} syncing…`
+            }
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 10px',
+              borderRadius: 20,
+              border: `1px solid ${!online ? T.red : T.gold}35`,
+              background: !online ? 'rgba(201,84,84,0.12)' : 'rgba(200,153,58,0.12)',
+              color: !online ? T.red : T.gold,
+              fontSize: 11,
+              fontWeight: 700,
+            }}
+          >
+            <div
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: !online ? T.red : T.gold,
+              }}
+            />
+            {!online ? 'Offline' : `${offlinePending} queued`}
+          </div>
+        )}
+        <button
+          onClick={onOpenHolds}
+          style={{
+            position: 'relative',
+            padding: '7px 12px',
+            borderRadius: 9,
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 700,
+            border: `1px solid ${T.border}`,
+            background: 'transparent',
+            color: T.textMid,
+            fontFamily: 'inherit',
+          }}
+        >
+          Held
+          {heldCount > 0 && (
+            <span
+              style={{
+                position: 'absolute',
+                top: -6,
+                right: -6,
+                background: T.accent,
+                color: '#fff',
+                borderRadius: '50%',
+                width: 18,
+                height: 18,
+                fontSize: 10,
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: `0 2px 8px ${T.accent}50`,
+              }}
+            >
+              {heldCount}
+            </span>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

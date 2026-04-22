@@ -276,7 +276,9 @@ export function TotalsBlock({
   const rows: Array<[string, string, { color?: string }?]> = [
     ['Subtotal', fmt(subtotal)],
     ...(discount > 0
-      ? ([[`Disc. ${discountPercent}%`, `−${fmt(discount)}`, { color: T.green }]] as const)
+      ? ([
+          [`Disc. ${discountPercent}%`, `−${fmt(discount)}`, { color: T.green }],
+        ] as Array<[string, string, { color?: string }?]>)
       : []),
     ['VAT (incl.)', fmt(vat)],
   ];
