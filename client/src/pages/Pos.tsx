@@ -1,14 +1,15 @@
+import { useMemo, useState } from 'react';
 import { T } from '@/tokens';
 import { useCartStore } from '@/stores/cart';
 import type { OrderType } from '@/stores/cart';
+import { useMenu } from '@/hooks/useMenu';
+import { CategoryBar } from '@/components/pos/CategoryBar';
+import { ProductGrid } from '@/components/pos/ProductGrid';
 
 // --- POS Terminal ---------------------------------------------------------
-// The main cashier screen. Two-column layout: product grid (left) and
-// cart/checkout (right, fixed 310px).
-//
-// Sessions:
-//  - chunk 1 (this one): shell + header (search, order type, table)
-//  - chunk 2: product grid + category filter + live search
+// Chunks:
+//  - chunk 1: shell + header (done)
+//  - chunk 2 (this): product grid + category filter + live search
 //  - chunk 3: cart panel with line controls + discount
 //  - chunk 4: checkout (card / cash / split) + receipt modal
 //  - chunk 5: offline queue + hold/recall
@@ -26,6 +27,22 @@ export function PosPage() {
   const tableNumber = useCartStore((s) => s.tableNumber);
   const setTable = useCartStore((s) => s.setTable);
 
+  const [search, setSearch] = useState('');
+  const [categoryId, setCategoryId] = useState('all');
+
+  const menu = useMenu();
+
+  const filteredItems = useMemo(() => {
+    if (!menu.data) return [];
+    const q = search.trim().toLowerCase();
+    return menu.data.items.filter((i) => {
+      if (!i.isAvailable) return false;
+      if (categoryId !== 'all' && i.categoryId !== categoryId) return false;
+      if (q && !i.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [menu.data, search, categoryId]);
+
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
       {/* Left column — menu browsing */}
@@ -39,43 +56,33 @@ export function PosPage() {
         }}
       >
         <PosHeader
+          search={search}
+          onSearch={setSearch}
           type={type}
           onTypeChange={setType}
           tableNumber={tableNumber}
           onTableChange={setTable}
         />
 
-        {/* Category filter — chunk 2 */}
-        <div
-          style={{
-            padding: '10px 16px',
-            background: T.surface,
-            borderBottom: `1px solid ${T.border}`,
-            color: T.textDim,
-            fontSize: 11,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.6px',
-          }}
-        >
-          Categories come next chunk
-        </div>
+        {menu.isLoading ? (
+          <CategorySkeleton />
+        ) : (
+          <CategoryBar
+            categories={menu.data?.categories ?? []}
+            active={categoryId}
+            onChange={setCategoryId}
+          />
+        )}
 
-        {/* Product grid — chunk 2 */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: 14,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: T.textDim,
-            fontSize: 13,
-          }}
-        >
-          Product grid lands in chunk 2.
-        </div>
+        {menu.isLoading ? (
+          <GridSkeleton />
+        ) : menu.isError ? (
+          <ErrorState message={menu.error instanceof Error ? menu.error.message : 'Menu failed to load'} />
+        ) : filteredItems.length === 0 && (menu.data?.items.length ?? 0) === 0 ? (
+          <EmptyMenuState />
+        ) : (
+          <ProductGrid items={filteredItems} />
+        )}
       </div>
 
       {/* Right column — cart / checkout (fixed 310px) */}
@@ -99,15 +106,18 @@ export function PosPage() {
 }
 
 // -------------------------------------------------------------------------
-// Header — search input (left), order-type toggle (middle),
-// table number input (right, only when dine-in is selected).
+// Header — search input, order-type toggle, table number input.
 // -------------------------------------------------------------------------
 function PosHeader({
+  search,
+  onSearch,
   type,
   onTypeChange,
   tableNumber,
   onTableChange,
 }: {
+  search: string;
+  onSearch: (s: string) => void;
   type: OrderType;
   onTypeChange: (t: OrderType) => void;
   tableNumber: string;
@@ -139,7 +149,8 @@ function PosHeader({
           ⌕
         </span>
         <input
-          disabled
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
           placeholder="Search menu…"
           style={{
             width: '100%',
@@ -199,6 +210,109 @@ function PosHeader({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------
+// Small loading + error states kept inline to avoid file sprawl.
+// -------------------------------------------------------------------------
+function CategorySkeleton() {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        gap: 6,
+        padding: '10px 16px',
+        background: T.surface,
+        borderBottom: `1px solid ${T.border}`,
+      }}
+    >
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={i}
+          style={{
+            width: 60,
+            height: 26,
+            borderRadius: 20,
+            background: T.card,
+            border: `1px solid ${T.border}`,
+            opacity: 0.5,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function GridSkeleton() {
+  return (
+    <div
+      style={{
+        flex: 1,
+        padding: 14,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+        gap: 10,
+        alignContent: 'start',
+      }}
+    >
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            background: T.card,
+            border: `1px solid ${T.border}`,
+            borderRadius: 14,
+            height: 104,
+            opacity: 0.5,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function EmptyMenuState() {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: T.textDim,
+        gap: 8,
+        padding: 30,
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ fontSize: 36, opacity: 0.25 }}>🍽</div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: T.text }}>No menu items yet</div>
+      <div style={{ fontSize: 12, maxWidth: 300 }}>
+        Add your first items in the menu manager to start taking orders. Menu CRUD ships in
+        session 3 — for now, seed items via the API or Supabase.
+      </div>
+    </div>
+  );
+}
+
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: T.red,
+        gap: 8,
+      }}
+    >
+      <div style={{ fontSize: 30 }}>⚠</div>
+      <div style={{ fontSize: 13, fontWeight: 700 }}>{message}</div>
     </div>
   );
 }
