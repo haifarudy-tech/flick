@@ -1,78 +1,127 @@
-// Foundation placeholder. Screens land in session 2 — see SESSION_PLAN.md.
-//
-// This page renders the design tokens as swatches so you can visually confirm
-// the Tailwind + tokens.ts pipeline is wired end-to-end. When we build the
-// real screens next session, replace this file with a BrowserRouter setup.
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { AppShell } from '@/components/AppShell';
+import { LoginPage } from '@/pages/Login';
+import { SignupPage } from '@/pages/Signup';
+import { PosLoginPage } from '@/pages/PosLogin';
+import { PosPage } from '@/pages/Pos';
+import { T } from '@/tokens';
 
-import { T } from './tokens';
+// Placeholder screens for routes that land in later sessions. They render a
+// minimal "coming soon" block so the sidebar nav always works without dead
+// links. Each will be replaced in its respective session.
+function Soon({ title, session }: { title: string; session: number }) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: T.textMid,
+        gap: 8,
+      }}
+    >
+      <div style={{ fontSize: 30, opacity: 0.25 }}>⊞</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color: T.text }}>{title}</div>
+      <div style={{ fontSize: 12 }}>Arrives in session {session}.</div>
+    </div>
+  );
+}
 
 export function App() {
-  const swatches: Array<[string, string]> = [
-    ['bg', T.bg],
-    ['surface', T.surface],
-    ['card', T.card],
-    ['cardHover', T.cardHover],
-    ['border', T.border],
-    ['borderLight', T.borderLight],
-    ['accent', T.accent],
-    ['accentDark', T.accentDark],
-    ['gold', T.gold],
-    ['green', T.green],
-    ['red', T.red],
-    ['blue', T.blue],
-    ['purple', T.purple],
-    ['text', T.text],
-    ['textMid', T.textMid],
-    ['textDim', T.textDim],
-  ];
-
   return (
-    <main className="min-h-full bg-bg text-text p-8">
-      <div className="max-w-3xl mx-auto">
-        <div className="flex items-baseline gap-3 mb-1">
-          <h1 className="text-3xl font-semibold tracking-tight">Flick</h1>
-          <span className="num text-text-mid">v0.1.0 — foundation</span>
-        </div>
-        <p className="text-text-mid mb-8">
-          Backend, auth, webhooks, RLS and design tokens are in place. Screens
-          arrive next session. See{' '}
-          <code className="bg-card px-1 py-0.5 rounded-sm">SESSION_PLAN.md</code>.
-        </p>
+    <Routes>
+      {/* Public routes */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route path="/pos-login" element={<PosLoginPage />} />
 
-        <section className="rounded-card border border-border bg-card p-6 shadow-warm">
-          <h2 className="text-sm uppercase tracking-wider text-text-mid mb-4">
-            Design tokens
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {swatches.map(([name, hex]) => (
-              <div
-                key={name}
-                className="rounded-md border border-border-light overflow-hidden bg-surface"
-              >
-                <div className="h-12" style={{ background: hex }} />
-                <div className="px-3 py-2">
-                  <div className="text-xs text-text">{name}</div>
-                  <div className="num text-xs text-text-mid">{hex}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+      {/* Protected routes — all share the AppShell (sidebar + outlet area) */}
+      <Route
+        path="/pos"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <PosPage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/orders"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <Soon title="Live Orders" session={3} />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/kitchen"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <Soon title="Kitchen Display" session={3} />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/delivery"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <Soon title="Delivery Hub" session={4} />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/analytics"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <Soon title="Analytics" session={6} />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/menu-manager"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <Soon title="Menu Management" session={3} />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/staff"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <Soon title="Staff" session={6} />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <Soon title="Settings" session={7} />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
 
-        <section className="mt-6 rounded-card border border-border bg-card p-6 shadow-warm">
-          <h2 className="text-sm uppercase tracking-wider text-text-mid mb-3">
-            Backend check
-          </h2>
-          <p className="text-text-mid text-sm">
-            Run <code className="bg-surface px-1 rounded">npm run dev</code> from the repo root,
-            then open{' '}
-            <code className="bg-surface px-1 rounded">
-              {import.meta.env.VITE_API_URL ?? 'http://localhost:3000'}/api/v1/health
-            </code>
-            . It should return <code className="bg-surface px-1 rounded">{'{ "status": "ok" }'}</code>.
-          </p>
-        </section>
-      </div>
-    </main>
+      <Route path="/" element={<Navigate to="/pos" replace />} />
+      <Route path="*" element={<Navigate to="/pos" replace />} />
+    </Routes>
   );
 }
