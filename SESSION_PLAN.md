@@ -320,6 +320,102 @@ Socket.io, React Query and API client that sessions 1 and 2 laid down.
 
 ---
 
+## ✅ Session 4 — Delivery Hub + Platform Integrations
+
+Built the screen that justifies Flick's 14–30% commission pitch: a single
+dashboard that makes the drain visible and steers owners toward their own
+zero-commission channel. Also finished the three platform adapters so menu
+sync and webhook cancellation actually work end-to-end.
+
+### What's in this session
+
+**Shared**
+- `src/types/delivery.ts` — `DeliveryPlatformConnection`,
+  `PlatformsResponse`, and `DELIVERY_PLATFORMS` meta (label, icon, API
+  key, commission pct, brand colour) for Uber Eats 30%, Deliveroo 30%,
+  Just Eat 14%, Direct QR 0%.
+- `src/hooks/useDelivery.ts` — query + mutations for platforms
+  list, start-connect, finish-connect (OAuth callback), disconnect,
+  trigger-sync, update-settings. All invalidate `['delivery','platforms']`.
+
+**Delivery Hub** — `/delivery`
+- Header KPI strip across today's connected-platform orders: gross,
+  commission paid, net, order count, average order value.
+- Four tabs: Live Orders, Platforms, Analytics, Settings.
+- **Live Orders tab** — platform filter pills (All / Uber Eats /
+  Deliveroo / Just Eat / Direct QR) and cards showing platform badge,
+  order #, time, first 3 items, delivery address, gross / commission /
+  net breakdown, and a status-advance button following
+  Accept → Preparing → Ready → Picked Up. POS orders are filtered out.
+- **Platforms tab** — one card per platform with connected state,
+  commission pill (red for non-zero, green for Direct QR), today's
+  orders / gross / net, a two-colour commission-drain bar ("you keep
+  X%"), and Connect / Disconnect / Sync buttons. Direct QR is always
+  on with a disabled "Always on · 0% commission" button.
+- **Analytics tab** — a red-gradient "Commission Drain" callout,
+  horizontal revenue-by-platform bars with net vs commission split, an
+  order-mix grid, and a "Grow Direct Channel" recommendation with
+  projected monthly savings if platform orders shifted to direct.
+- **Settings tab** — per-platform card with Menu Sync toggle,
+  Auto-Accept toggle, delivery pricing markup slider (0–40%), and a
+  Pause button.
+- New orders from non-POS sources play a short 1040 Hz WebAudio ding
+  (sound toggle in the header, dedupes via ref).
+
+**OAuth flow**
+- `/settings/delivery/callback/:platform` — reads `code` + `state` from
+  the query string, prompts for the platform's store / restaurant /
+  location id, POSTs to `finishConnect`, shows a toast, redirects to
+  `/delivery`. Guards against double-submission with a ref.
+
+**Server refinements**
+- `server/src/services/delivery/pricing.ts` — `pricedMenuFor(platform,
+  items, markupPct)` returns a typed `PricedMenuItem[]`. Per-item
+  per-platform override (`deliveryPriceUberEats / Deliveroo / JustEat`)
+  wins; otherwise base price × (1 + markup / 100), rounded to 2dp.
+  Modifier groups + modifiers are included with their priceAdd.
+- `server/src/services/delivery/{ubereats,deliveroo,justeat}.ts` —
+  `syncMenu` now takes `PricedMenuItem[]` and builds the
+  platform-shaped payload (Uber `menus` + `items` + `modifier_groups`
+  with pence pricing, Deliveroo `items` with `{ fractional,
+  currency_code }`, Just Eat `products` with decimals). If access
+  token, external location id, or client id is missing the call is a
+  dev-mode no-op. Otherwise it PUTs to the live endpoint.
+- `server/src/jobs/menuSync.worker.ts` — pulls connected platforms,
+  loads the menu once, decrypts the stored access token, reads
+  `deliveryPricingMarkupPct` per connection, hands that to
+  `pricedMenuFor`, routes to the right platform's `syncMenu`, updates
+  `lastSyncAt`, and emits `menu:synced`. BullMQ retries any throw.
+- `server/src/controllers/webhook.controller.ts` — handles
+  `order.cancelled / order_cancelled / ORDER_CANCELLED` from any
+  platform. Looks up the local order by `platformOrderId`, flips it to
+  `CANCELLED` (idempotent), and emits `order:cancelled` so Orders and
+  Kitchen drop the card live. Order create path now includes
+  `payments: true` so the emitted shape matches `listOrders`.
+
+### What is NOT in this session
+- Real Stripe Terminal reader wiring (session 5)
+- Modifier groups UI in Menu Manager (deferred polish)
+- Analytics / Staff / Settings / Onboarding / QR menu
+- Rotating webhook secrets from the UI (field stored, no rotate endpoint yet)
+
+### How to verify
+1. `npm install` at the repo root
+2. `npm run dev`
+3. Sign in, visit `/delivery` — empty state with Direct QR always on.
+4. Click Connect on a platform → OAuth popup / redirect → callback
+   prompts for store id → back to `/delivery` with the card now
+   Connected.
+5. Trigger a menu sync via the Platforms tab → worker runs, dev log
+   shows the built payload, `lastSyncAt` refreshes.
+6. POST a test webhook to `/webhooks/ubereats` with a valid HMAC → the
+   order appears on `/orders` and `/kitchen` with commission + net
+   breakdowns.
+7. POST a cancel webhook → the order vanishes from both screens live.
+8. `npm run typecheck` from the root — zero errors.
+
+---
+
 ## 🗺 Roadmap
 
 | Session | Focus |
@@ -327,7 +423,7 @@ Socket.io, React Query and API client that sessions 1 and 2 laid down.
 | 1 ✅ | Foundation |
 | 2 ✅ | Auth screens + POS Terminal |
 | 3 ✅ | Menu Management CRUD + real-time Live Orders + Kitchen Display |
-| 4 | Delivery Hub UI + finish Uber Eats / Deliveroo / Just Eat integrations |
+| 4 ✅ | Delivery Hub UI + Uber Eats / Deliveroo / Just Eat integrations |
 | 5 | Stripe Terminal in-browser payments + split payments + refunds |
 | 6 | Analytics screen + Staff management + Clock in/out |
 | 7 | Subscriptions + Onboarding flow + plan gating UX |
@@ -344,74 +440,63 @@ Each session should:
 
 ## 🧭 Next session prompt
 
-Paste this into Claude Code to start session 4.
+Paste this into Claude Code to start session 5.
 
 ```
 Continue building Flick. Read SESSION_PLAN.md first and respect what
-sessions 1-3 already delivered — do not rewrite the foundation, the
-auth flow, the POS terminal, the Menu Manager, Live Orders, or the
-Kitchen Display.
+sessions 1-4 already delivered — do not rewrite the foundation, auth,
+POS terminal, Menu Manager, Live Orders, Kitchen Display, or the
+Delivery Hub.
 
-Scope for THIS session (session 4 — Delivery Hub + finish delivery
-platform integrations):
+Scope for THIS session (session 5 — Stripe Terminal payments +
+split payments + refunds):
 
-1. Delivery Hub UI — /delivery:
-   - Summary strip: gross revenue, commission, net, orders, avg order
-     (today across all connected platforms)
-   - Tabs: "Platforms" and "Analytics" (match reference exactly)
-   - Platforms tab: one card per platform (Uber Eats / Deliveroo /
-     Just Eat / Direct QR) with connected / disconnected state,
-     commission %, today's orders / gross / net, "you keep" progress
-     bar, and a Connect / Manage button
-   - Analytics tab: stacked bar of revenue-by-platform with net vs
-     commission split, and the "Commission Drain" callout from the
-     reference
-   - Direct QR card always-connected, 0% commission
+1. Stripe Terminal in-browser wiring:
+   - Server: `/api/v1/payments/connection-token` returns a Terminal
+     connection token from the Stripe secret key.
+   - Server: `/api/v1/payments/intent` creates a PaymentIntent with
+     the order total, returns client_secret + intent id.
+   - Server: `/api/v1/payments/capture/:intentId` confirms + captures
+     after the reader collects payment. Persist a `Payment` row with
+     `method: CARD`, `stripePaymentIntentId`, and link to the order.
+   - Client: `src/lib/stripeTerminal.ts` initialises
+     `StripeTerminal.create` with `fetchConnectionToken` + an
+     `onUnexpectedReaderDisconnect` handler. Discover readers, connect
+     to the first simulated reader in dev.
+   - POS card tab: replace the session-2 placeholder with the real
+     flow — create intent → `collectPaymentMethod` → `processPayment`
+     → capture. Show step-by-step state, inline errors, reader status.
 
-2. Platform OAuth flow:
-   - Connect button → popup / redirect through the existing
-     `buildAuthUrl` per platform (state in Redis, 10m TTL)
-   - Callback route on the server handles `exchangeCodeForToken`,
-     encrypts tokens, writes `DeliveryPlatformConnection` with
-     CONNECTED status, redirects back to /delivery with a success
-     toast
-   - Disconnect action flips status to DISCONNECTED and revokes tokens
-     where the platform supports it
-   - Webhook secret shown + rotate button, autoAcceptOrders toggle,
-     deliveryPricingMarkupPct slider, menuSyncEnabled toggle
+2. Split payments:
+   - Let the cashier combine card + cash for one order. Persist each
+     leg as its own `Payment` row. Receipt shows both amounts.
 
-3. Menu sync to platforms:
-   - Replace the per-platform stubs in
-     server/src/services/delivery/*.ts with real (or best-effort
-     sandbox) API calls for menu push
-   - Wire the BullMQ worker so `queueMenuSync(businessId)` actually
-     syncs. Keep the "Redis absent → no-op" behaviour for dev.
-   - When a menu item has a per-platform price override, use it
-     instead of basePrice during sync
+3. Refunds:
+   - Refund button on the order drawer for `COMPLETED` orders with a
+     card payment. Full-refund first pass; partial refund by amount.
+   - Server endpoint calls `stripe.refunds.create({ payment_intent })`
+     and persists a `Payment` row with a negative amount and
+     `method: REFUND`. Emits `order:updated` so the UI flips the card.
 
-4. End-to-end webhook flow hardening:
-   - Webhook → `Order` already lands (session 1). Make sure platform
-     orders propagate through Orders + Kitchen screens live (session 3
-     UI already listens to `order:new` and `platform:order`).
-   - Add an "auto-accept" flag: if the platform connection has
-     autoAcceptOrders=true, new webhook orders start in PREPARING
-     rather than NEW.
-   - Cancel / refund flows from the platform side.
+4. Reader management screen:
+   - Settings > Payments page showing the connected reader, a
+     "disconnect" button, and a "use simulated reader" toggle for dev.
 
 Reference files:
 - src/tokens.ts — do NOT change these values
-- design/flick-pos-reference.html — match the Delivery Hub exactly
-- server/src/services/delivery/*.ts — stubs already there
-- server/src/controllers/webhook.controller.ts — already receives +
-  persists; wire the missing pieces
+- server/prisma/schema.prisma — `Payment` model already has the
+  Stripe fields
+- docs/SECURITY.md — PCI context
+- client/src/pages/POS.tsx — where the card flow currently stubs out
 
-Out of scope for session 4:
-- Stripe Terminal (session 5)
-- Analytics / Staff / Settings / Onboarding / QR menu
+Out of scope for session 5:
+- Analytics / Staff / Onboarding / QR menu (later sessions)
+- Tap-to-Pay on iPhone / Android (needs native bridge)
+- Stripe Issuing / Connect accounts
 
 At the end:
 - Run `npm run typecheck` in both workspaces — zero errors
-- Update SESSION_PLAN.md: tick session 4 off, update the "next session
-  prompt" to point at session 5
+- Update SESSION_PLAN.md: tick session 5 off, update the "next session
+  prompt" to point at session 6
 - Commit with a clear message and push to claude/build-saas-product-nfGdk
 ```
