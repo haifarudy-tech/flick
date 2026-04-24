@@ -8,6 +8,7 @@ import { PosPage } from '@/pages/Pos';
 import { MenuManagerPage } from '@/pages/MenuManager';
 import { OrdersPage } from '@/pages/Orders';
 import { KitchenPage } from '@/pages/Kitchen';
+import { DeliveryPage } from '@/pages/Delivery';
 import { T } from '@/tokens';
 
 // Placeholder screens for routes that land in later sessions. They render a
@@ -77,7 +78,7 @@ export function App() {
         element={
           <ProtectedRoute>
             <AppShell>
-              <Soon title="Delivery Hub" session={4} />
+              <DeliveryPage />
             </AppShell>
           </ProtectedRoute>
         }
