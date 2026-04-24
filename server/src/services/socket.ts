@@ -48,6 +48,12 @@ export function emitOrderNew(businessId: string, order: unknown) {
 export function emitOrderUpdated(businessId: string, order: unknown) {
   io?.to(`business:${businessId}`).emit('order:updated', order);
 }
+export function emitOrderCancelled(
+  businessId: string,
+  payload: { orderId: string; reason?: string },
+) {
+  io?.to(`business:${businessId}`).emit('order:cancelled', payload);
+}
 export function emitPlatformOrder(businessId: string, order: unknown) {
   io?.to(`business:${businessId}:delivery`).emit('platform:order', order);
 }

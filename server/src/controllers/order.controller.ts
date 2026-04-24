@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { tenantContext } from '../middleware/auth.js';
 import { badRequest, notFound } from '../lib/httpError.js';
-import { emitOrderNew, emitOrderUpdated } from '../services/socket.js';
+import {
+  emitOrderCancelled,
+  emitOrderNew,
+  emitOrderUpdated,
+} from '../services/socket.js';
 
 const listQuery = z.object({
   status: z.string().optional(),
@@ -174,8 +178,13 @@ export async function updateStatus(req: Request, res: Response, next: NextFuncti
         completedAt:
           body.status === 'COMPLETED' || body.status === 'PICKED_UP' ? new Date() : undefined,
       },
+      include: { items: { include: { modifiers: true } }, payments: true },
     });
-    emitOrderUpdated(businessId, order);
+    if (body.status === 'CANCELLED') {
+      emitOrderCancelled(businessId, { orderId: order.id });
+    } else {
+      emitOrderUpdated(businessId, order);
+    }
     res.json(order);
   } catch (err) {
     next(err);
