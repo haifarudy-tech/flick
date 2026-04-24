@@ -1,5 +1,6 @@
 import { env } from '../../lib/env.js';
 import { logger } from '../../lib/logger.js';
+import type { PricedMenuItem } from './pricing.js';
 
 export function buildAuthUrl(redirectUri: string, state: string) {
   const params = new URLSearchParams({
@@ -34,7 +35,51 @@ export async function exchangeCodeForToken(code: string, redirectUri: string) {
   };
 }
 
-export async function syncMenu(_accessToken: string, _menu: unknown, _siteId: string) {
-  // PUT /api/v1/sites/{site_id}/menu
-  return { ok: true };
+export async function syncMenu(
+  accessToken: string,
+  menu: PricedMenuItem[],
+  siteId: string,
+) {
+  const body = {
+    site_id: siteId,
+    items: menu.map((m) => ({
+      id: m.id,
+      name: m.name,
+      description: m.description ?? '',
+      price: { fractional: Math.round(m.price * 100), currency_code: 'GBP' },
+      available: m.isAvailable,
+      modifiers: m.modifierGroups.flatMap((g) =>
+        g.modifiers.map((mo) => ({
+          id: mo.id,
+          name: mo.name,
+          price: { fractional: Math.round(mo.priceAdd * 100), currency_code: 'GBP' },
+        })),
+      ),
+    })),
+  };
+
+  if (!accessToken || !siteId || !env.DELIVEROO_CLIENT_ID) {
+    logger.info(
+      { siteId, itemCount: menu.length },
+      'deliveroo sync — dev mode, skipping HTTP',
+    );
+    return { ok: true, mode: 'dev' as const };
+  }
+
+  const res = await fetch(
+    `https://api.deliveroo.com/menu/v1/sites/${siteId}/menu`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) {
+    logger.error({ status: res.status }, 'deliveroo menu sync failed');
+    throw new Error(`Deliveroo menu sync failed (${res.status})`);
+  }
+  return { ok: true, mode: 'live' as const };
 }

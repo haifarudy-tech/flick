@@ -1,5 +1,6 @@
 import { env } from '../../lib/env.js';
 import { logger } from '../../lib/logger.js';
+import type { PricedMenuItem } from './pricing.js';
 
 export function buildAuthUrl(redirectUri: string, state: string) {
   const params = new URLSearchParams({
@@ -34,7 +35,50 @@ export async function exchangeCodeForToken(code: string, redirectUri: string) {
   };
 }
 
-export async function syncMenu(_accessToken: string, _menu: unknown, _restaurantId: string) {
-  // PUT /api/v2/menu
-  return { ok: true };
+import type { PricedMenuItem } from './pricing.js';
+
+export async function syncMenu(
+  accessToken: string,
+  menu: PricedMenuItem[],
+  restaurantId: string,
+) {
+  const body = {
+    restaurantId,
+    products: menu.map((m) => ({
+      productId: m.id,
+      productName: m.name,
+      description: m.description ?? '',
+      unitPrice: m.price,
+      isAvailable: m.isAvailable,
+      modifiers: m.modifierGroups.flatMap((g) =>
+        g.modifiers.map((mo) => ({
+          id: mo.id,
+          name: mo.name,
+          price: mo.priceAdd,
+        })),
+      ),
+    })),
+  };
+
+  if (!accessToken || !restaurantId || !env.JUST_EAT_CLIENT_ID) {
+    logger.info(
+      { restaurantId, itemCount: menu.length },
+      'just eat sync — dev mode, skipping HTTP',
+    );
+    return { ok: true, mode: 'dev' as const };
+  }
+
+  const res = await fetch(`https://api.flyt.io/v2/restaurants/${restaurantId}/menu`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    logger.error({ status: res.status }, 'just eat menu sync failed');
+    throw new Error(`Just Eat menu sync failed (${res.status})`);
+  }
+  return { ok: true, mode: 'live' as const };
 }

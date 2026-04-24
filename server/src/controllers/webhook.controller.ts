@@ -3,7 +3,11 @@ import { prisma } from '../lib/prisma.js';
 import { env } from '../lib/env.js';
 import { verifyHmac } from '../lib/crypto.js';
 import { normalise } from '../services/delivery/normaliser.js';
-import { emitOrderNew, emitPlatformOrder } from '../services/socket.js';
+import {
+  emitOrderCancelled,
+  emitOrderNew,
+  emitPlatformOrder,
+} from '../services/socket.js';
 import { badRequest, unauthorized } from '../lib/httpError.js';
 import { logger } from '../lib/logger.js';
 import type { DeliveryPlatform } from '../../../shared/types/index.js';
@@ -100,6 +104,33 @@ export function makeDeliveryWebhook(platformKey: keyof typeof PLATFORMS) {
         return;
       }
 
+      // Cancellation — flip our local order to CANCELLED and broadcast.
+      const isCancel =
+        eventType === 'order.cancelled' ||
+        eventType === 'order.canceled' ||
+        eventType === 'order_cancelled' ||
+        eventType === 'ORDER_CANCELLED';
+      if (isCancel) {
+        const platformOrderId =
+          payload.order?.id ??
+          payload.order_id ??
+          payload.orderId ??
+          payload.id;
+        if (platformOrderId) {
+          const existing = await prisma.order.findFirst({
+            where: { businessId: connection.businessId, platformOrderId: String(platformOrderId) },
+          });
+          if (existing && existing.status !== 'CANCELLED') {
+            await prisma.order.update({
+              where: { id: existing.id },
+              data: { status: 'CANCELLED' },
+            });
+            emitOrderCancelled(connection.businessId, { orderId: existing.id });
+          }
+        }
+        return;
+      }
+
       // Order-created event — normalise + persist
       const isOrder =
         eventType === 'order.created' ||
@@ -154,7 +185,7 @@ export function makeDeliveryWebhook(platformKey: keyof typeof PLATFORMS) {
             })),
           },
         },
-        include: { items: { include: { modifiers: true } } },
+        include: { items: { include: { modifiers: true } }, payments: true },
       });
 
       emitOrderNew(connection.businessId, order);

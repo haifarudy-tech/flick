@@ -6,6 +6,7 @@
 
 import { env } from '../../lib/env.js';
 import { logger } from '../../lib/logger.js';
+import type { PricedMenuItem } from './pricing.js';
 
 export const UBER_EATS_OAUTH_URL = 'https://login.uber.com/oauth/v2/authorize';
 
@@ -44,9 +45,74 @@ export async function exchangeCodeForToken(code: string, redirectUri: string) {
   };
 }
 
-export async function syncMenu(_accessToken: string, _menu: unknown, _externalLocationId: string) {
-  // POST /v1/eats/stores/{store_id}/menus
-  // Deliberately a stub so the job runner has a typed target. Implement against
-  // current Uber Eats docs when your Uber Developer account is approved.
-  return { ok: true };
+export async function syncMenu(
+  accessToken: string,
+  menu: PricedMenuItem[],
+  externalLocationId: string,
+) {
+  // Real call: PUT https://api.uber.com/v1/eats/stores/{store_id}/menus
+  // We build the Uber-shaped payload so the structure is correct even while
+  // we log-and-noop in dev / without approved credentials.
+  const body = {
+    menus: [
+      {
+        id: 'default',
+        title: { translations: { en_us: 'Menu' } },
+        category_ids: Array.from(
+          new Set(menu.map((m) => m.category).filter(Boolean) as string[]),
+        ),
+      },
+    ],
+    items: menu.map((m) => ({
+      id: m.id,
+      title: { translations: { en_us: m.name } },
+      description: m.description
+        ? { translations: { en_us: m.description } }
+        : undefined,
+      price_info: { price: Math.round(m.price * 100) },
+      suspension_info: { suspension: { suspend_until: m.isAvailable ? 0 : 1 } },
+      modifier_group_ids: { ids: m.modifierGroups.map((g) => g.id) },
+    })),
+    modifier_groups: menu.flatMap((m) =>
+      m.modifierGroups.map((g) => ({
+        id: g.id,
+        title: { translations: { en_us: g.name } },
+        quantity_info: {
+          quantity: {
+            min_permitted: g.minSelections,
+            max_permitted: g.maxSelections,
+          },
+        },
+        modifier_options: {
+          ids: g.modifiers.map((mo) => mo.id),
+        },
+      })),
+    ),
+  };
+
+  if (!accessToken || !externalLocationId || !env.UBER_EATS_CLIENT_ID) {
+    logger.info(
+      { location: externalLocationId, itemCount: menu.length },
+      'uber eats sync — dev mode, skipping HTTP',
+    );
+    return { ok: true, mode: 'dev' as const };
+  }
+
+  const res = await fetch(
+    `https://api.uber.com/v1/eats/stores/${externalLocationId}/menus`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) {
+    const errBody = await res.text();
+    logger.error({ status: res.status, errBody }, 'uber eats menu sync failed');
+    throw new Error(`Uber Eats menu sync failed (${res.status})`);
+  }
+  return { ok: true, mode: 'live' as const };
 }
