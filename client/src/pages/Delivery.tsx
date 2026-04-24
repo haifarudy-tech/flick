@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { T } from '@/tokens';
 import { LiveDot } from '@/components/ui/LiveDot';
+import { Toggle } from '@/components/ui/Toggle';
+import { useToast } from '@/components/ui/Toast';
 import { useOrders, useOrderSocket } from '@/hooks/useOrders';
 import { useDeliveryPlatforms } from '@/hooks/useDelivery';
+import { PLATFORM_META } from '@/types/order';
 import type { Order } from '@/types/order';
 import { DELIVERY_PLATFORMS } from '@/types/delivery';
 import { DeliveryLiveOrdersTab } from '@/components/delivery/DeliveryLiveOrdersTab';
@@ -38,10 +41,50 @@ function isDeliveryOrder(o: Order): boolean {
   );
 }
 
+function playDing() {
+  try {
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.value = 1040;
+    o.type = 'sine';
+    g.gain.setValueAtTime(0.001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.09, ctx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0005, ctx.currentTime + 0.4);
+    o.connect(g).connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.45);
+  } catch {
+    /* audio nice-to-have only */
+  }
+}
+
 export function DeliveryPage() {
   const { data, isLoading } = useOrders();
   const { data: platformsData } = useDeliveryPlatforms();
-  useOrderSocket();
+  const toast = useToast();
+  const [soundOn, setSoundOn] = useState(true);
+  const seen = useRef<Set<string>>(new Set());
+
+  const onNewOrder = useCallback(
+    (order: Order) => {
+      if (seen.current.has(order.id)) return;
+      seen.current.add(order.id);
+      if (order.source === 'POS') return;
+      if (soundOn) playDing();
+      toast.info(
+        `${PLATFORM_META[order.source].label} order #${order.orderNumber}`,
+      );
+    },
+    [soundOn, toast],
+  );
+
+  useOrderSocket({ onNewOrder });
 
   const [tab, setTab] = useState<TabKey>('live');
 
@@ -115,7 +158,25 @@ export function DeliveryPage() {
               platforms · {kpis.count} orders today
             </p>
           </div>
-          <LiveDot />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 11,
+                color: T.textMid,
+                fontWeight: 700,
+                letterSpacing: '0.4px',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+              }}
+            >
+              <span>🔔 Sound</span>
+              <Toggle on={soundOn} onChange={() => setSoundOn((v) => !v)} />
+            </label>
+            <LiveDot />
+          </div>
         </div>
 
         {/* KPI strip */}
