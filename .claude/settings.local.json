@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git reset *)",
+      "Bash(git commit -m 'Session 4 chunk A+B+C: delivery types, hooks, Delivery Hub shell + Live Orders tab *)",
+      "Bash(git config *)",
+      "Bash(git commit -m 'Session 4 chunk D: Platforms tab + OAuth callback flow *)"
+    ]
+  }
+}

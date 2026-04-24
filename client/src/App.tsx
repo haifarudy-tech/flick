@@ -9,6 +9,7 @@ import { MenuManagerPage } from '@/pages/MenuManager';
 import { OrdersPage } from '@/pages/Orders';
 import { KitchenPage } from '@/pages/Kitchen';
 import { DeliveryPage } from '@/pages/Delivery';
+import { DeliveryCallbackPage } from '@/pages/DeliveryCallback';
 import { T } from '@/tokens';
 
 // Placeholder screens for routes that land in later sessions. They render a
@@ -119,6 +120,17 @@ export function App() {
           <ProtectedRoute>
             <AppShell>
               <Soon title="Settings" session={7} />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/settings/delivery/callback/:platform"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <DeliveryCallbackPage />
             </AppShell>
           </ProtectedRoute>
         }
