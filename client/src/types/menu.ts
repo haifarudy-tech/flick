@@ -41,6 +41,9 @@ export interface MenuItem {
   costPrice: number | null;
   isAvailable: boolean;
   isPopular: boolean;
+  deliveryPriceUberEats: number | null;
+  deliveryPriceDeliveroo: number | null;
+  deliveryPriceJustEat: number | null;
   sortOrder: number;
   modifierGroups?: MenuItemModifierGroup[];
 }
