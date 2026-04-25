@@ -1,8 +1,11 @@
+import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { T } from '@/tokens';
 import { Button } from '@/components/ui/Button';
 import { Pill } from '@/components/ui/Pill';
 import { fmt } from '@/lib/format';
-import type { Order } from '@/types/order';
+import { api } from '@/lib/api';
+import type { Order, OrderPayment } from '@/types/order';
 import { ORDER_TYPE_LABEL, PLATFORM_META } from '@/types/order';
 import type { OrderStatus } from '@flick/shared/types';
 
@@ -24,6 +27,12 @@ const STATUS_COLOR: Record<OrderStatus, string> = {
   CANCELLED: T.textDim,
 };
 
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  CARD: '💳 Card',
+  CASH: '💷 Cash',
+  SPLIT: '⟺ Split',
+};
+
 export interface OrderDetailProps {
   order: Order;
   onClose: () => void;
@@ -31,21 +40,17 @@ export interface OrderDetailProps {
   transitioning: boolean;
 }
 
-const TRANSITIONS: OrderStatus[] = [
-  'NEW',
-  'PREPARING',
-  'READY',
-  'COMPLETED',
-  'CANCELLED',
-];
+const TRANSITIONS: OrderStatus[] = ['NEW', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'];
 
-export function OrderDetail({
-  order,
-  onClose,
-  onTransition,
-  transitioning,
-}: OrderDetailProps) {
+export function OrderDetail({ order, onClose, onTransition, transitioning }: OrderDetailProps) {
   const meta = PLATFORM_META[order.source];
+  const [refundPayment, setRefundPayment] = useState<OrderPayment | null>(null);
+
+  const refundablePayments = order.payments.filter(
+    (p) => p.status === 'COMPLETED' && (p.method === 'CARD' || p.method === 'CASH'),
+  );
+  const canRefund = order.status === 'COMPLETED' && refundablePayments.length > 0;
+
   return (
     <div
       style={{
@@ -71,6 +76,7 @@ export function OrderDetail({
           boxShadow: '-8px 0 32px rgba(0,0,0,0.5)',
         }}
       >
+        {/* Header */}
         <div
           style={{
             padding: '16px 20px',
@@ -131,7 +137,9 @@ export function OrderDetail({
           </button>
         </div>
 
+        {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px' }}>
+          {/* Customer info */}
           {(order.customerName || order.customerPhone || order.deliveryAddress) && (
             <div
               style={{
@@ -145,28 +153,14 @@ export function OrderDetail({
                 gap: 6,
               }}
             >
-              {order.customerName && (
-                <Row label="Customer" value={order.customerName} />
-              )}
+              {order.customerName && <Row label="Customer" value={order.customerName} />}
               {order.customerPhone && <Row label="Phone" value={order.customerPhone} />}
-              {order.deliveryAddress && (
-                <Row label="Address" value={order.deliveryAddress} />
-              )}
+              {order.deliveryAddress && <Row label="Address" value={order.deliveryAddress} />}
             </div>
           )}
 
-          <div
-            style={{
-              fontSize: 11,
-              color: T.textDim,
-              fontWeight: 700,
-              letterSpacing: '0.7px',
-              textTransform: 'uppercase',
-              marginBottom: 10,
-            }}
-          >
-            Items
-          </div>
+          {/* Items */}
+          <SectionTitle>Items</SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
             {order.items.map((it) => (
               <div
@@ -193,7 +187,9 @@ export function OrderDetail({
                       <span>{it.name}</span>
                     </div>
                     {it.modifiers.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
+                      <div
+                        style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}
+                      >
                         {it.modifiers.map((m) => (
                           <div
                             key={m.id}
@@ -234,6 +230,7 @@ export function OrderDetail({
             ))}
           </div>
 
+          {/* Money breakdown */}
           <div
             style={{
               background: T.card,
@@ -243,6 +240,7 @@ export function OrderDetail({
               display: 'flex',
               flexDirection: 'column',
               gap: 6,
+              marginBottom: 16,
             }}
           >
             <Row label="Subtotal" value={fmt(order.subtotal)} />
@@ -253,13 +251,7 @@ export function OrderDetail({
             {order.deliveryFee != null && order.deliveryFee > 0 && (
               <Row label="Delivery fee" value={fmt(order.deliveryFee)} />
             )}
-            <div
-              style={{
-                height: 1,
-                background: T.border,
-                margin: '4px 0',
-              }}
-            />
+            <div style={{ height: 1, background: T.border, margin: '4px 0' }} />
             <Row label="Total" value={fmt(order.total)} bold />
             {order.netAfterCommission != null && order.source !== 'POS' && (
               <Row
@@ -270,10 +262,125 @@ export function OrderDetail({
             )}
           </div>
 
+          {/* Payments */}
+          {order.payments.length > 0 && (
+            <>
+              <SectionTitle>Payments</SectionTitle>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                  marginBottom: 16,
+                }}
+              >
+                {order.payments.map((p) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      background: T.card,
+                      border: `1px solid ${p.status === 'REFUNDED' ? T.red : T.border}`,
+                      borderRadius: 10,
+                      padding: '10px 14px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>
+                        {PAYMENT_METHOD_LABEL[p.method] ?? p.method}
+                        {p.status === 'REFUNDED' && (
+                          <span
+                            style={{
+                              marginLeft: 8,
+                              fontSize: 10,
+                              color: T.red,
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            Refunded
+                          </span>
+                        )}
+                        {p.status === 'PENDING' && (
+                          <span
+                            style={{
+                              marginLeft: 8,
+                              fontSize: 10,
+                              color: T.gold,
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            Pending
+                          </span>
+                        )}
+                      </div>
+                      {p.tip > 0 && (
+                        <div style={{ fontSize: 11, color: T.green }}>
+                          incl. tip {fmt(p.tip)}
+                        </div>
+                      )}
+                      {p.change > 0 && (
+                        <div style={{ fontSize: 11, color: T.textDim }}>
+                          change {fmt(p.change)}
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      className="num"
+                      style={{
+                        fontWeight: 900,
+                        fontSize: 15,
+                        color: p.status === 'REFUNDED' ? T.red : T.text,
+                      }}
+                    >
+                      {fmt(p.amount + p.tip)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Refund section */}
+          {canRefund && (
+            <div style={{ marginBottom: 16 }}>
+              <SectionTitle>Refund</SectionTitle>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {refundablePayments.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setRefundPayment(p)}
+                    style={{
+                      background: 'rgba(201,84,84,0.08)',
+                      border: `1px solid ${T.red}30`,
+                      borderRadius: 10,
+                      padding: '10px 14px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <span style={{ fontSize: 13, color: T.red, fontWeight: 700 }}>
+                      Refund {PAYMENT_METHOD_LABEL[p.method] ?? p.method}
+                    </span>
+                    <span className="num" style={{ fontSize: 13, color: T.red, fontWeight: 900 }}>
+                      {fmt(p.amount + p.tip)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Notes */}
           {order.notes && (
             <div
               style={{
-                marginTop: 16,
                 background: 'rgba(200,153,58,0.08)',
                 border: `1px solid ${T.gold}30`,
                 borderRadius: 12,
@@ -288,6 +395,7 @@ export function OrderDetail({
           )}
         </div>
 
+        {/* Footer — status transitions */}
         <div
           style={{
             padding: '14px 20px',
@@ -314,11 +422,7 @@ export function OrderDetail({
                 key={s}
                 small
                 variant={
-                  s === 'CANCELLED'
-                    ? 'danger'
-                    : s === order.status
-                      ? 'primary'
-                      : 'secondary'
+                  s === 'CANCELLED' ? 'danger' : s === order.status ? 'primary' : 'secondary'
                 }
                 onClick={() => onTransition(s)}
                 disabled={transitioning || s === order.status}
@@ -329,6 +433,232 @@ export function OrderDetail({
           </div>
         </div>
       </div>
+
+      {/* Refund modal */}
+      {refundPayment && (
+        <RefundModal
+          payment={refundPayment}
+          onClose={() => setRefundPayment(null)}
+          onSuccess={() => {
+            setRefundPayment(null);
+            onClose();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Refund modal ──────────────────────────────────────────────────────────────
+
+function RefundModal({
+  payment,
+  onClose,
+  onSuccess,
+}: {
+  payment: OrderPayment;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const qc = useQueryClient();
+  const maxAmount = payment.amount + payment.tip;
+  const [amount, setAmount] = useState(maxAmount.toFixed(2));
+  const [reason, setReason] = useState('');
+  const [mode, setMode] = useState<'full' | 'partial'>('full');
+
+  const refundAmount = mode === 'full' ? maxAmount : parseFloat(amount) || 0;
+  const valid = refundAmount > 0 && refundAmount <= maxAmount;
+
+  const { mutate, isPending, error } = useMutation({
+    mutationFn: () =>
+      api.post(`/api/v1/payments/${payment.id}/refund`, {
+        amount: refundAmount,
+        reason: reason.trim() || undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['orders'] });
+      onSuccess();
+    },
+  });
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(12,11,9,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+        zIndex: 200,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 400,
+          background: T.card,
+          border: `1px solid ${T.border}`,
+          borderRadius: 16,
+          padding: 24,
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>Issue refund</div>
+        <div style={{ fontSize: 12, color: T.textMid, marginBottom: 20 }}>
+          {PAYMENT_METHOD_LABEL[payment.method] ?? payment.method} ·{' '}
+          {payment.stripePaymentIntentId ? 'Card via Stripe' : 'Cash — logged manually'}
+        </div>
+
+        {/* Full / partial toggle */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          {(['full', 'partial'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => {
+                setMode(m);
+                if (m === 'full') setAmount(maxAmount.toFixed(2));
+              }}
+              style={{
+                flex: 1,
+                padding: '9px 0',
+                borderRadius: 9,
+                cursor: 'pointer',
+                border: mode === m ? `1px solid ${T.red}55` : `1px solid ${T.border}`,
+                background: mode === m ? 'rgba(201,84,84,0.1)' : T.surface,
+                color: mode === m ? T.red : T.textMid,
+                fontSize: 12,
+                fontWeight: 700,
+                fontFamily: 'inherit',
+              }}
+            >
+              {m === 'full' ? `Full — ${fmt(maxAmount)}` : 'Partial amount'}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'partial' && (
+          <div style={{ marginBottom: 16 }}>
+            <FieldLabel>Refund amount</FieldLabel>
+            <div style={{ position: 'relative' }}>
+              <span
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: T.textMid,
+                  fontWeight: 700,
+                }}
+              >
+                £
+              </span>
+              <input
+                type="number"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                max={maxAmount}
+                step="0.01"
+                className="num"
+                style={{
+                  width: '100%',
+                  background: T.surface,
+                  border: `1px solid ${T.border}`,
+                  borderRadius: 10,
+                  padding: '10px 12px 10px 26px',
+                  color: T.text,
+                  fontSize: 16,
+                  fontWeight: 800,
+                  outline: 'none',
+                  fontFamily: '"DM Mono", monospace',
+                }}
+              />
+            </div>
+            {refundAmount > maxAmount && (
+              <div style={{ fontSize: 11, color: T.red, marginTop: 4 }}>
+                Cannot exceed {fmt(maxAmount)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Reason */}
+        <div style={{ marginBottom: 20 }}>
+          <FieldLabel>Reason (optional)</FieldLabel>
+          <input
+            type="text"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. Wrong item, customer complaint…"
+            style={{
+              width: '100%',
+              background: T.surface,
+              border: `1px solid ${T.border}`,
+              borderRadius: 10,
+              padding: '10px 12px',
+              color: T.text,
+              fontSize: 13,
+              outline: 'none',
+              fontFamily: 'inherit',
+            }}
+          />
+        </div>
+
+        {error && (
+          <div
+            style={{
+              background: 'rgba(201,84,84,0.1)',
+              border: `1px solid ${T.red}30`,
+              borderRadius: 10,
+              padding: '10px 14px',
+              fontSize: 12,
+              color: T.red,
+              marginBottom: 16,
+            }}
+          >
+            {error instanceof Error ? error.message : 'Refund failed. Try again.'}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="secondary" full onClick={onClose} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button variant="danger" full onClick={() => mutate()} disabled={!valid || isPending}>
+            {isPending ? 'Processing…' : `Refund ${fmt(refundAmount)}`}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        color: T.textDim,
+        fontWeight: 700,
+        letterSpacing: '0.7px',
+        textTransform: 'uppercase',
+        marginBottom: 10,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 11, color: T.textDim, fontWeight: 700, marginBottom: 6 }}>
+      {children}
     </div>
   );
 }

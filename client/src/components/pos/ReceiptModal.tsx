@@ -4,10 +4,12 @@ import { Button } from '@/components/ui/Button';
 import { fmt } from '@/lib/format';
 import type { CartLine } from '@/stores/cart';
 
-// Receipt modal shown after a successful order. Supports print / email / SMS /
-// none. "Print" opens the browser print dialog with a receipt-shaped page;
-// email and SMS are scaffolded to hit future endpoints and are not yet wired
-// to the server.
+export interface ReceiptPaymentLeg {
+  method: 'CARD' | 'CASH';
+  amount: number;
+  tip?: number;
+  change?: number;
+}
 
 export interface ReceiptInfo {
   orderNumber: number | string;
@@ -16,35 +18,49 @@ export interface ReceiptInfo {
   subtotal: number;
   vat: number;
   discount: number;
+  tip: number;
   lines: CartLine[];
-  paymentMethod: 'CARD' | 'CASH' | 'SPLIT';
-  change?: number;
+  payments: ReceiptPaymentLeg[];
 }
 
-export function ReceiptModal({
-  info,
-  onClose,
-}: {
-  info: ReceiptInfo;
-  onClose: () => void;
-}) {
+const METHOD_LABEL: Record<string, string> = { CARD: 'Card', CASH: 'Cash' };
+
+export function ReceiptModal({ info, onClose }: { info: ReceiptInfo; onClose: () => void }) {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [status, setStatus] = useState<string | null>(null);
 
+  const grandTotal = info.total + info.tip;
+
   const printReceipt = () => {
-    const w = window.open('', '_blank', 'width=340,height=600');
+    const w = window.open('', '_blank', 'width=340,height=700');
     if (!w) return;
-    w.document.write(`
-      <!doctype html><html><head><meta charset="utf-8"/><title>Receipt ${info.orderNumber}</title>
+
+    const paymentRows = info.payments
+      .map((p) => {
+        const label = METHOD_LABEL[p.method] ?? p.method;
+        const charged = p.amount + (p.tip ?? 0);
+        let extra = '';
+        if ((p.tip ?? 0) > 0) extra += ` · tip ${fmt(p.tip!)}`;
+        if ((p.change ?? 0) > 0) extra += ` · change ${fmt(p.change!)}`;
+        return `<div class="row"><span>${label}${extra}</span><span>${fmt(charged)}</span></div>`;
+      })
+      .join('');
+
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"/>
+      <title>Receipt ${info.orderNumber}</title>
       <style>
         body{font-family:ui-monospace,monospace;max-width:300px;margin:20px auto;color:#111;}
-        h1{font-size:16px;margin:0 0 8px;} .row{display:flex;justify-content:space-between;font-size:12px;margin:3px 0;}
+        h1{font-size:16px;margin:0 0 8px;}
+        .row{display:flex;justify-content:space-between;font-size:12px;margin:3px 0;}
         hr{border:none;border-top:1px dashed #999;margin:10px 0;}
         .total{font-size:14px;font-weight:800;}
+        .tip{color:#2a7a42;}
       </style></head><body>
       <h1>${info.businessName}</h1>
-      <div style="font-size:11px;color:#555;">Order ${info.orderNumber} · ${new Date().toLocaleString('en-GB')}</div>
+      <div style="font-size:11px;color:#555;">
+        Order ${info.orderNumber} · ${new Date().toLocaleString('en-GB')}
+      </div>
       <hr/>
       ${info.lines
         .map(
@@ -56,26 +72,21 @@ export function ReceiptModal({
       <div class="row"><span>Subtotal</span><span>${fmt(info.subtotal)}</span></div>
       ${info.discount > 0 ? `<div class="row"><span>Discount</span><span>−${fmt(info.discount)}</span></div>` : ''}
       <div class="row"><span>VAT</span><span>${fmt(info.vat)}</span></div>
-      <div class="row total"><span>TOTAL</span><span>${fmt(info.total)}</span></div>
-      <div class="row"><span>Paid</span><span>${info.paymentMethod}${
-        info.paymentMethod === 'CASH' && info.change ? ` · change ${fmt(info.change)}` : ''
-      }</span></div>
+      <div class="row total"><span>Order total</span><span>${fmt(info.total)}</span></div>
+      ${info.tip > 0 ? `<div class="row tip"><span>Tip</span><span>${fmt(info.tip)}</span></div>` : ''}
+      ${info.tip > 0 ? `<div class="row total"><span>GRAND TOTAL</span><span>${fmt(grandTotal)}</span></div>` : ''}
+      <hr/>
+      ${paymentRows}
       <hr/>
       <div style="text-align:center;font-size:11px;color:#555;">Thank you 🧡</div>
-      </body></html>
-    `);
+      </body></html>`);
     w.document.close();
     w.focus();
     w.print();
   };
 
-  const sendEmail = () => {
-    // Placeholder — a future session wires /api/v1/receipts/email.
-    setStatus(`Receipt will be emailed to ${email}.`);
-  };
-  const sendSms = () => {
-    setStatus(`Receipt will be texted to ${phone}.`);
-  };
+  const sendEmail = () => setStatus(`Receipt will be emailed to ${email}.`);
+  const sendSms = () => setStatus(`Receipt will be texted to ${phone}.`);
 
   return (
     <div
@@ -102,6 +113,7 @@ export function ReceiptModal({
           padding: 20,
         }}
       >
+        {/* Success badge */}
         <div
           style={{
             display: 'flex',
@@ -118,10 +130,63 @@ export function ReceiptModal({
           <div style={{ fontSize: 28 }}>✓</div>
           <div style={{ fontWeight: 800, fontSize: 15, color: T.green }}>Order fired</div>
           <div className="num" style={{ fontSize: 12, color: T.textMid }}>
-            #{info.orderNumber} · {fmt(info.total)}
+            #{info.orderNumber} · {fmt(grandTotal)}
           </div>
         </div>
 
+        {/* Payment summary */}
+        <div
+          style={{
+            background: T.surface,
+            borderRadius: 10,
+            padding: '10px 14px',
+            marginBottom: 14,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+          }}
+        >
+          {info.payments.map((p, i) => (
+            <div
+              key={i}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: 12,
+                color: T.textMid,
+              }}
+            >
+              <span>
+                {p.method === 'CARD' ? '💳' : '💷'} {METHOD_LABEL[p.method]}
+                {(p.tip ?? 0) > 0 && (
+                  <span style={{ color: T.green }}> + tip {fmt(p.tip!)}</span>
+                )}
+                {(p.change ?? 0) > 0 && (
+                  <span style={{ color: T.textDim }}> · change {fmt(p.change!)}</span>
+                )}
+              </span>
+              <span className="num" style={{ fontWeight: 700 }}>
+                {fmt(p.amount + (p.tip ?? 0))}
+              </span>
+            </div>
+          ))}
+          {info.tip > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: 11,
+                color: T.green,
+                marginTop: 2,
+              }}
+            >
+              <span>Total tip</span>
+              <span className="num">{fmt(info.tip)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Send options */}
         <div
           style={{
             fontSize: 10,

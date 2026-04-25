@@ -68,5 +68,5 @@ export const DELIVERY_PLATFORMS: DeliveryPlatformMeta[] = [
 ];
 
 export function platformMetaFor(source: DeliverySourceKey): DeliveryPlatformMeta {
-  return DELIVERY_PLATFORMS.find((p) => p.key === source) ?? DELIVERY_PLATFORMS[0];
+  return DELIVERY_PLATFORMS.find((p) => p.key === source) ?? (DELIVERY_PLATFORMS[0] as DeliveryPlatformMeta);
 }

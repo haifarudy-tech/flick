@@ -46,6 +46,7 @@ function coerceOrder(raw: Record<string, unknown>): Order {
       amount: n(p.amount),
       tip: n(p.tip),
       change: n(p.change),
+      stripePaymentIntentId: (p.stripePaymentIntentId as string | null) ?? null,
     })),
   };
 }

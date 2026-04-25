@@ -424,7 +424,7 @@ sync and webhook cancellation actually work end-to-end.
 | 2 ✅ | Auth screens + POS Terminal |
 | 3 ✅ | Menu Management CRUD + real-time Live Orders + Kitchen Display |
 | 4 ✅ | Delivery Hub UI + Uber Eats / Deliveroo / Just Eat integrations |
-| 5 | Stripe Terminal in-browser payments + split payments + refunds |
+| 5 ✅ | Stripe Terminal in-browser payments + split payments + tips + refunds |
 | 6 | Analytics screen + Staff management + Clock in/out |
 | 7 | Subscriptions + Onboarding flow + plan gating UX |
 | 8 | Public QR menu + direct QR ordering |
@@ -438,65 +438,136 @@ Each session should:
 
 ---
 
+## ✅ Session 5 — Stripe Terminal payments + Tips + Split + Refunds
+
+Built the full in-browser payment stack on top of the POS terminal built in
+session 2. Every payment is now fully recorded, auditable, and visible in
+the order detail drawer.
+
+### What's in this session
+
+**Server**
+- `POST /api/v1/payments/terminal/session` — Stripe Terminal connection token.
+- `POST /api/v1/payments/intent` — creates a `card_present` PaymentIntent
+  (for Terminal SDK). Accepts `tip`, persists PENDING `Payment` row with
+  `stripePaymentIntentId`.
+- `POST /api/v1/payments/capture` — called after `terminal.processPayment()`
+  succeeds. Marks Payment COMPLETED, optionally marks Order COMPLETED, emits
+  `order:updated`.
+- `POST /api/v1/payments/cash` — extended with `markComplete` param (default
+  `true`) for split payment use.
+- `POST /api/v1/payments/:id/refund` — extended with `amount` (partial refund)
+  and `reason`. Calls `stripe.refunds.create`, marks payment REFUNDED, emits
+  `order:updated`.
+
+**Client — Terminal SDK**
+- `@stripe/terminal-js` installed.
+- `src/lib/stripeTerminal.ts` — `useStripeTerminal()` hook managing the full
+  lifecycle: `loading_sdk → discovering → connecting → ready → collecting →
+  processing → capturing → success / error`. Simulated reader in dev.
+
+**POS Checkout — tips, card, split**
+- `CheckoutPanel` rewritten (session-2 placeholder replaced):
+  - **Tip section** — No tip / 10% / 15% / 20% quick buttons (live £ preview)
+    + Custom input. Grand total shown throughout.
+  - **Card tab** — live terminal state UI while Pos.tsx drives the flow.
+  - **Split tab** — card amount + cash amount, running balance, auto-fill
+    shortcut. Card leg via Terminal, cash leg via cash endpoint.
+- `Pos.tsx` orchestrates CASH / CARD / SPLIT flows, passes `cardPaymentState`
+  to CheckoutPanel for in-panel terminal progress display.
+
+**Refunds — Order Detail drawer**
+- Refund button for COMPLETED orders with CARD or CASH payments.
+- `RefundModal` — full / partial toggle, optional reason field.
+- Card refunds flow through Stripe; cash refunds are audit records.
+- Payment rows in drawer show REFUNDED / PENDING badges and tip/change.
+
+**Receipts**
+- `ReceiptInfo` updated with `tip` and `payments: ReceiptPaymentLeg[]`.
+- Print receipt shows itemised payment legs, tip line, grand total.
+- Receipt modal shows payment summary card.
+
+**Settings > Payments — `/settings/payments`**
+- Reader status badge, connect/disconnect buttons, explainer.
+
+### What is NOT in this session
+- Tap-to-Pay on iPhone/Android (native bridge needed)
+- Stripe Issuing / Connect accounts
+- Email/SMS receipt delivery (endpoints still stubbed)
+- Analytics / Staff / Onboarding / QR menu (sessions 6-8)
+
+### How to verify
+1. `npm install` at repo root
+2. `npm run dev`
+3. Sign in → `/pos`, add items, tap Charge.
+4. **Cash** — pick Cash, enter tendered, confirm → receipt with change.
+5. **Card** — pick Card, tap "Charge Card". Panel shows terminal stages.
+   Simulated reader auto-accepts. Receipt appears.
+6. **Split** — enter £X card / £Y cash (balanced), confirm → card terminal
+   runs, then cash recorded, receipt shows both legs.
+7. **Tip** — pick 15%, any method → receipt shows tip line.
+8. `/orders` → click COMPLETED order → Refund → partial or full → success.
+9. `/settings/payments` → connect reader, see status change.
+10. `npm run typecheck` from root — zero errors (client workspace).
+
+---
+
 ## 🧭 Next session prompt
 
-Paste this into Claude Code to start session 5.
+Paste this into Claude Code to start session 6.
 
 ```
 Continue building Flick. Read SESSION_PLAN.md first and respect what
-sessions 1-4 already delivered — do not rewrite the foundation, auth,
-POS terminal, Menu Manager, Live Orders, Kitchen Display, or the
-Delivery Hub.
+sessions 1-5 already delivered — do not rewrite the foundation, auth,
+POS terminal, Menu Manager, Live Orders, Kitchen Display, Delivery Hub,
+or the payment/refund/tip stack.
 
-Scope for THIS session (session 5 — Stripe Terminal payments +
-split payments + refunds):
+Scope for THIS session (session 6 — Analytics + Staff management +
+Clock in/out):
 
-1. Stripe Terminal in-browser wiring:
-   - Server: `/api/v1/payments/connection-token` returns a Terminal
-     connection token from the Stripe secret key.
-   - Server: `/api/v1/payments/intent` creates a PaymentIntent with
-     the order total, returns client_secret + intent id.
-   - Server: `/api/v1/payments/capture/:intentId` confirms + captures
-     after the reader collects payment. Persist a `Payment` row with
-     `method: CARD`, `stripePaymentIntentId`, and link to the order.
-   - Client: `src/lib/stripeTerminal.ts` initialises
-     `StripeTerminal.create` with `fetchConnectionToken` + an
-     `onUnexpectedReaderDisconnect` handler. Discover readers, connect
-     to the first simulated reader in dev.
-   - POS card tab: replace the session-2 placeholder with the real
-     flow — create intent → `collectPaymentMethod` → `processPayment`
-     → capture. Show step-by-step state, inline errors, reader status.
+1. Analytics screen — /analytics
+   - Today's summary KPIs: gross revenue, net revenue, order count,
+     average order value, total tips collected, total refunds issued.
+   - Revenue by hour bar chart (last 24 h, SVG/div bars — no extra
+     charting library).
+   - Top 5 items by revenue and by quantity sold.
+   - Payment method breakdown (card vs cash vs split).
+   - Date range picker: Today / Yesterday / Last 7 days / Last 30 days.
+   - Extend the existing /api/v1/analytics endpoint
+     (analytics.controller.ts already exists) with the fields the UI needs.
 
-2. Split payments:
-   - Let the cashier combine card + cash for one order. Persist each
-     leg as its own `Payment` row. Receipt shows both amounts.
+2. Staff management screen — /staff
+   - Staff list: name, role, PIN-set badge, last clock-in, today's
+     hours, hourly rate, status (clocked in / out).
+   - Add staff: creates a User + Staff record (name, email, role,
+     hourly rate). Shows a temporary PIN once.
+   - Edit: name, role, hourly rate. Reset PIN.
+   - Deactivate (soft-delete: isActive = false).
+   - Uses existing User + Staff + Shift models; no schema changes.
 
-3. Refunds:
-   - Refund button on the order drawer for `COMPLETED` orders with a
-     card payment. Full-refund first pass; partial refund by amount.
-   - Server endpoint calls `stripe.refunds.create({ payment_intent })`
-     and persists a `Payment` row with a negative amount and
-     `method: REFUND`. Emits `order:updated` so the UI flips the card.
-
-4. Reader management screen:
-   - Settings > Payments page showing the connected reader, a
-     "disconnect" button, and a "use simulated reader" toggle for dev.
+3. Clock in/out
+   - Clock-in/out on the Staff screen and a full-screen
+     /staff/clock widget for a wall-mounted tablet.
+   - Worker picks their name, enters PIN, taps Clock In/Out.
+   - Records a Shift row (clockIn / clockOut / hoursWorked).
+   - Today's live hours on the Staff list (sum of open shifts).
+   - Server endpoints:
+       POST /api/v1/staff/clock-in  { userId, pin }
+       POST /api/v1/staff/clock-out { userId }
 
 Reference files:
 - src/tokens.ts — do NOT change these values
-- server/prisma/schema.prisma — `Payment` model already has the
-  Stripe fields
-- docs/SECURITY.md — PCI context
-- client/src/pages/POS.tsx — where the card flow currently stubs out
+- server/src/controllers/analytics.controller.ts — extend, not rewrite
+- server/src/controllers/staff.controller.ts — extend
+- server/prisma/schema.prisma — Staff / Shift / User already modelled
 
-Out of scope for session 5:
-- Analytics / Staff / Onboarding / QR menu (later sessions)
-- Tap-to-Pay on iPhone / Android (needs native bridge)
-- Stripe Issuing / Connect accounts
+Out of scope for session 6:
+- Subscriptions / plan gating UX (session 7)
+- QR menu / public ordering (session 8)
+- Payroll export / HMRC integration
 
 At the end:
 - Run `npm run typecheck` in both workspaces — zero errors
-- Update SESSION_PLAN.md: tick session 5 off, update the "next session
-  prompt" to point at session 6
-- Commit with a clear message and push to claude/build-saas-product-nfGdk
+- Update SESSION_PLAN.md: tick session 6, update next session prompt
+- Commit and push to the working branch
 ```

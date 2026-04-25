@@ -26,6 +26,7 @@ export interface OrderPayment {
   amount: number;
   tip: number;
   change: number;
+  stripePaymentIntentId: string | null;
   status: 'PENDING' | 'COMPLETED' | 'REFUNDED';
   createdAt: string;
 }

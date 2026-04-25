@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import {
   cashPayment,
+  capturePayment,
   createPaymentIntent,
   refund,
   terminalSession,
@@ -12,6 +13,7 @@ router.use(requireAuth);
 
 router.post('/intent', createPaymentIntent);
 router.post('/terminal/session', terminalSession);
+router.post('/capture', capturePayment);
 router.post('/cash', cashPayment);
 router.post('/:id/refund', refund);
 

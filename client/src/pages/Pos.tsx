@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { T } from '@/tokens';
 import { useCartStore, computeTotals } from '@/stores/cart';
 import type { OrderType } from '@/stores/cart';
@@ -13,15 +13,7 @@ import { ReceiptModal, type ReceiptInfo } from '@/components/pos/ReceiptModal';
 import { HoldsPanel } from '@/components/pos/HoldsPanel';
 import { useOfflineFlusher } from '@/hooks/useCreateOrder';
 import { api } from '@/lib/api';
-
-// --- POS Terminal ---------------------------------------------------------
-// Chunks:
-//  - chunk 1: shell + header (done)
-//  - chunk 2: product grid + category filter + live search (done)
-//  - chunk 3: cart panel with line controls + discount (done)
-//  - chunk 4 (this): checkout (card / cash / split) + receipt modal
-//  - chunk 5: offline queue + hold/recall
-// -------------------------------------------------------------------------
+import { useStripeTerminal } from '@/lib/stripeTerminal';
 
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   DINE_IN: 'Dine In',
@@ -48,6 +40,9 @@ export function PosPage() {
   const [view, setView] = useState<'cart' | 'checkout'>('cart');
   const [receipt, setReceipt] = useState<ReceiptInfo | null>(null);
   const [showHolds, setShowHolds] = useState(false);
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+  const [cardPaymentActive, setCardPaymentActive] = useState(false);
+  const [cardPaymentError, setCardPaymentError] = useState<string | null>(null);
 
   const heldCount = useCartStore((s) => s.held.length);
   const hold = useCartStore((s) => s.hold);
@@ -55,6 +50,7 @@ export function PosPage() {
   const menu = useMenu();
   const createOrder = useCreateOrder();
   const { pending: offlinePending } = useOfflineFlusher();
+  const terminal = useStripeTerminal();
 
   const filteredItems = useMemo(() => {
     if (!menu.data) return [];
@@ -69,10 +65,23 @@ export function PosPage() {
 
   const totals = computeTotals(lines, discountPercent, 0);
 
-  const submitOrder = async (result: CheckoutResult) => {
-    if (lines.length === 0) return;
+  // Passed to CheckoutPanel — only non-null while a card payment is running.
+  const cardPaymentState = cardPaymentActive
+    ? {
+        stage: cardPaymentError ? ('error' as const) : terminal.stage,
+        error: cardPaymentError ?? terminal.error,
+      }
+    : null;
 
-    const res = await createOrder.mutateAsync({
+  const handleCancelCard = useCallback(async () => {
+    await terminal.cancel();
+    setCardPaymentActive(false);
+    setCardPaymentError(null);
+    setSubmittingPayment(false);
+  }, [terminal]);
+
+  const buildOrderPayload = useCallback(
+    () => ({
       type,
       tableNumber: type === 'DINE_IN' ? tableNumber : undefined,
       customerName: customerName || undefined,
@@ -88,37 +97,190 @@ export function PosPage() {
         notes: l.notes,
         modifiers: l.modifiers,
       })),
-    });
+    }),
+    [type, tableNumber, customerName, customerPhone, deliveryAddress, discountPercent, lines],
+  );
 
-    // Fire-and-forget cash payment record on the server when known.
-    // Card payments are finalised via Stripe Terminal in session 5.
-    if (!res.queued && result.method === 'CASH' && result.cashTendered != null) {
-      try {
-        await api.post('/api/v1/payments/cash', {
-          orderId: res.id,
-          amount: totals.total,
-          tendered: result.cashTendered,
-        });
-      } catch {
-        /* non-fatal — the order itself is on record */
+  const showReceiptAndReset = useCallback(
+    (info: ReceiptInfo) => {
+      setReceipt(info);
+      clearCart();
+      setView('cart');
+      setCardPaymentActive(false);
+      setCardPaymentError(null);
+      setSubmittingPayment(false);
+    },
+    [clearCart],
+  );
+
+  const submitOrder = useCallback(
+    async (result: CheckoutResult) => {
+      if (lines.length === 0) return;
+      setSubmittingPayment(true);
+      setCardPaymentError(null);
+
+      const orderPayload = buildOrderPayload();
+      const receiptBase: Omit<ReceiptInfo, 'payments'> = {
+        orderNumber: '—',
+        businessName: business?.name ?? 'Flick',
+        total: totals.total,
+        subtotal: totals.subtotal,
+        vat: totals.vat,
+        discount: totals.discount,
+        tip: result.tip,
+        lines,
+      };
+
+      // ── CASH ────────────────────────────────────────────────────────────
+      if (result.method === 'CASH') {
+        try {
+          const res = await createOrder.mutateAsync(orderPayload);
+          const orderNum = res.queued ? 'offline' : res.id.slice(-4).toUpperCase();
+
+          if (!res.queued) {
+            await api.post('/api/v1/payments/cash', {
+              orderId: res.id,
+              amount: totals.total,
+              tendered: result.cashTendered ?? totals.total,
+              tip: result.tip,
+              markComplete: true,
+            });
+          }
+
+          showReceiptAndReset({
+            ...receiptBase,
+            orderNumber: orderNum,
+            payments: [{ method: 'CASH', amount: totals.total, tip: result.tip, change: result.change }],
+          });
+        } catch {
+          setSubmittingPayment(false);
+        }
+        return;
       }
-    }
 
-    setReceipt({
-      orderNumber: res.queued ? 'offline' : res.id.slice(-4).toUpperCase(),
-      businessName: business?.name ?? 'Flick',
-      total: totals.total,
-      subtotal: totals.subtotal,
-      vat: totals.vat,
-      discount: totals.discount,
+      // ── CARD ─────────────────────────────────────────────────────────────
+      if (result.method === 'CARD') {
+        setCardPaymentActive(true);
+        try {
+          const res = await createOrder.mutateAsync(orderPayload);
+          const orderNum = res.queued ? 'offline' : res.id.slice(-4).toUpperCase();
+
+          if (res.queued) {
+            showReceiptAndReset({
+              ...receiptBase,
+              orderNumber: orderNum,
+              payments: [{ method: 'CARD', amount: totals.total, tip: result.tip }],
+            });
+            return;
+          }
+
+          const intentData = await api.post<{ clientSecret: string; paymentIntentId: string }>(
+            '/api/v1/payments/intent',
+            { orderId: res.id, amount: totals.total, tip: result.tip },
+          );
+
+          const connected = await terminal.ensureConnected();
+          if (!connected) return; // terminal.stage already set to error
+
+          const chargeResult = await terminal.chargeCard(intentData.clientSecret);
+          if (!chargeResult.success) return;
+
+          terminal.reset();
+          await api.post('/api/v1/payments/capture', {
+            intentId: intentData.paymentIntentId,
+            markComplete: true,
+          });
+
+          showReceiptAndReset({
+            ...receiptBase,
+            orderNumber: orderNum,
+            payments: [{ method: 'CARD', amount: totals.total, tip: result.tip }],
+          });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Payment failed.';
+          setCardPaymentError(msg);
+          setSubmittingPayment(false);
+        }
+        return;
+      }
+
+      // ── SPLIT ────────────────────────────────────────────────────────────
+      if (result.method === 'SPLIT') {
+        const cardAmount = result.splitCard ?? 0;
+        const cashAmount = result.splitCash ?? 0;
+        setCardPaymentActive(true);
+
+        try {
+          const res = await createOrder.mutateAsync(orderPayload);
+          const orderNum = res.queued ? 'offline' : res.id.slice(-4).toUpperCase();
+
+          if (res.queued) {
+            showReceiptAndReset({
+              ...receiptBase,
+              orderNumber: orderNum,
+              payments: [
+                { method: 'CARD', amount: cardAmount, tip: result.tip },
+                { method: 'CASH', amount: cashAmount },
+              ],
+            });
+            return;
+          }
+
+          // Card leg
+          const intentData = await api.post<{ clientSecret: string; paymentIntentId: string }>(
+            '/api/v1/payments/intent',
+            { orderId: res.id, amount: cardAmount, tip: result.tip },
+          );
+
+          const connected = await terminal.ensureConnected();
+          if (!connected) return;
+
+          const chargeResult = await terminal.chargeCard(intentData.clientSecret);
+          if (!chargeResult.success) return;
+
+          terminal.reset();
+          setCardPaymentActive(false); // card done; show normal state briefly
+
+          await api.post('/api/v1/payments/capture', {
+            intentId: intentData.paymentIntentId,
+            markComplete: false,
+          });
+
+          // Cash leg — marks order COMPLETED
+          await api.post('/api/v1/payments/cash', {
+            orderId: res.id,
+            amount: cashAmount,
+            tendered: cashAmount,
+            tip: 0,
+            markComplete: true,
+          });
+
+          showReceiptAndReset({
+            ...receiptBase,
+            orderNumber: orderNum,
+            payments: [
+              { method: 'CARD', amount: cardAmount, tip: result.tip },
+              { method: 'CASH', amount: cashAmount },
+            ],
+          });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Payment failed.';
+          setCardPaymentError(msg);
+          setSubmittingPayment(false);
+        }
+        return;
+      }
+    },
+    [
       lines,
-      paymentMethod: result.method,
-      change: result.change,
-    });
-
-    clearCart();
-    setView('cart');
-  };
+      buildOrderPayload,
+      business?.name,
+      totals,
+      createOrder,
+      terminal,
+      showReceiptAndReset,
+    ],
+  );
 
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -158,9 +320,7 @@ export function PosPage() {
           <GridSkeleton />
         ) : menu.isError ? (
           <ErrorState
-            message={
-              menu.error instanceof Error ? menu.error.message : 'Menu failed to load'
-            }
+            message={menu.error instanceof Error ? menu.error.message : 'Menu failed to load'}
           />
         ) : filteredItems.length === 0 && (menu.data?.items.length ?? 0) === 0 ? (
           <EmptyMenuState />
@@ -183,9 +343,13 @@ export function PosPage() {
           <CartPanel onCharge={() => setView('checkout')} onHold={hold} />
         ) : (
           <CheckoutPanel
-            onBack={() => setView('cart')}
+            onBack={() => {
+              if (!submittingPayment) setView('cart');
+            }}
             onConfirm={submitOrder}
-            submitting={createOrder.isPending}
+            submitting={submittingPayment}
+            cardPaymentState={cardPaymentState}
+            onCancelCard={handleCancelCard}
           />
         )}
       </aside>
@@ -196,9 +360,8 @@ export function PosPage() {
   );
 }
 
-// -------------------------------------------------------------------------
-// Header — search input, order-type toggle, table number input.
-// -------------------------------------------------------------------------
+// ── Header ────────────────────────────────────────────────────────────────────
+
 function PosHeader({
   search,
   onSearch,
@@ -309,7 +472,6 @@ function PosHeader({
         </div>
       )}
 
-      {/* Right-edge toolbar: held orders button + offline indicator */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
         {(!online || offlinePending > 0) && (
           <div
@@ -386,9 +548,8 @@ function PosHeader({
   );
 }
 
-// -------------------------------------------------------------------------
-// Small loading + error states kept inline to avoid file sprawl.
-// -------------------------------------------------------------------------
+// ── Loading / empty / error states ────────────────────────────────────────────
+
 function CategorySkeleton() {
   return (
     <div
@@ -463,8 +624,7 @@ function EmptyMenuState() {
       <div style={{ fontSize: 36, opacity: 0.25 }}>🍽</div>
       <div style={{ fontSize: 14, fontWeight: 800, color: T.text }}>No menu items yet</div>
       <div style={{ fontSize: 12, maxWidth: 300 }}>
-        Add your first items in the menu manager to start taking orders. Menu CRUD ships in
-        session 3 — for now, seed items via the API or Supabase.
+        Add your first items in the menu manager to start taking orders.
       </div>
     </div>
   );
