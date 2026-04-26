@@ -2,6 +2,14 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { T } from '@/tokens';
 import { useAuthStore } from '@/stores/auth';
 import { api } from '@/lib/api';
+import type { Plan } from '@flick/shared/types';
+
+const PLAN_COLOR: Record<Plan, string> = {
+  FREE: T.textDim,
+  STARTER: T.blue,
+  PRO: T.accent,
+  ENTERPRISE: T.gold,
+};
 
 // Icons are plain unicode glyphs to match the reference exactly.
 const NAV = [
@@ -17,8 +25,10 @@ const NAV = [
 
 export function Sidebar() {
   const user = useAuthStore((s) => s.user);
+  const business = useAuthStore((s) => s.business);
   const clear = useAuthStore((s) => s.clear);
   const nav = useNavigate();
+  const plan = business?.plan ?? 'FREE';
 
   const signOut = async () => {
     try {
@@ -103,6 +113,35 @@ export function Sidebar() {
       ))}
 
       <div style={{ flex: 1 }} />
+
+      {/* Plan badge */}
+      <NavLink
+        to="/settings/billing"
+        title={`${plan} plan — click to manage`}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 36,
+          height: 18,
+          borderRadius: 10,
+          background: `${PLAN_COLOR[plan]}18`,
+          border: `1px solid ${PLAN_COLOR[plan]}35`,
+          textDecoration: 'none',
+          marginBottom: 6,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 7,
+            fontWeight: 900,
+            color: PLAN_COLOR[plan],
+            letterSpacing: '0.4px',
+          }}
+        >
+          {plan}
+        </span>
+      </NavLink>
 
       <button
         onClick={signOut}

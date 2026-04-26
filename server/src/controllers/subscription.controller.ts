@@ -19,8 +19,23 @@ export async function getSubscription(req: Request, res: Response, next: NextFun
   }
 }
 
+export async function getUsageStats(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { businessId } = tenantContext(req);
+    const [menuItems, locations, deliveryPlatforms] = await Promise.all([
+      prisma.menuItem.count({ where: { businessId } }),
+      prisma.location.count({ where: { businessId } }),
+      prisma.deliveryPlatformConnection.count({ where: { businessId, status: 'CONNECTED' } }),
+    ]);
+    res.json({ menuItems, locations, deliveryPlatforms });
+  } catch (err) {
+    next(err);
+  }
+}
+
 const checkoutSchema = z.object({
   plan: z.enum(['STARTER', 'PRO', 'ENTERPRISE']),
+  billingPeriod: z.enum(['monthly', 'annual']).default('monthly'),
 });
 
 export async function checkout(req: Request, res: Response, next: NextFunction) {
@@ -47,7 +62,7 @@ export async function checkout(req: Request, res: Response, next: NextFunction) 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: customerId,
-      line_items: [{ price: planToPriceId(body.plan), quantity: 1 }],
+      line_items: [{ price: planToPriceId(body.plan, body.billingPeriod), quantity: 1 }],
       success_url: `${env.FRONTEND_URL}/settings/billing?success=true`,
       cancel_url: `${env.FRONTEND_URL}/settings/billing?cancelled=true`,
       subscription_data: { metadata: { businessId, plan: body.plan } },

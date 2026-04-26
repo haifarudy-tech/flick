@@ -11,9 +11,11 @@ import { KitchenPage } from '@/pages/Kitchen';
 import { DeliveryPage } from '@/pages/Delivery';
 import { DeliveryCallbackPage } from '@/pages/DeliveryCallback';
 import { SettingsPaymentsPage } from '@/pages/SettingsPayments';
+import { SettingsBillingPage } from '@/pages/SettingsBilling';
 import { AnalyticsPage } from '@/pages/Analytics';
 import { StaffPage } from '@/pages/Staff';
 import { StaffClockPage } from '@/pages/StaffClock';
+import { OnboardingPage } from '@/pages/Onboarding';
 import { T } from '@/tokens';
 
 // Placeholder screens for routes that land in later sessions. They render a
@@ -125,7 +127,17 @@ export function App() {
         element={
           <ProtectedRoute>
             <AppShell>
-              <Soon title="Settings" session={7} />
+              <SettingsBillingPage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/billing"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <SettingsBillingPage />
             </AppShell>
           </ProtectedRoute>
         }
@@ -148,6 +160,16 @@ export function App() {
             <AppShell>
               <DeliveryCallbackPage />
             </AppShell>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Onboarding — protected but no AppShell (full-page wizard) */}
+      <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute>
+            <OnboardingPage />
           </ProtectedRoute>
         }
       />

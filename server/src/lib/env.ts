@@ -25,6 +25,9 @@ const schema = z.object({
   STRIPE_PRICE_STARTER: z.string().optional(),
   STRIPE_PRICE_PRO: z.string().optional(),
   STRIPE_PRICE_ENTERPRISE: z.string().optional(),
+  STRIPE_PRICE_STARTER_ANNUAL: z.string().optional(),
+  STRIPE_PRICE_PRO_ANNUAL: z.string().optional(),
+  STRIPE_PRICE_ENTERPRISE_ANNUAL: z.string().optional(),
 
   UBER_EATS_CLIENT_ID: z.string().optional(),
   UBER_EATS_CLIENT_SECRET: z.string().optional(),

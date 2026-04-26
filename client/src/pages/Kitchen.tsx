@@ -6,6 +6,9 @@ import { ApiError } from '@/lib/api';
 import type { Order } from '@/types/order';
 import { PLATFORM_META } from '@/types/order';
 import type { OrderStatus } from '@flick/shared/types';
+import { planMeets } from '@flick/shared/types';
+import { useAuthStore } from '@/stores/auth';
+import { PlanLockOverlay } from '@/components/UpgradeModal';
 
 interface KitchenColumn {
   key: 'cooking' | 'ready';
@@ -50,6 +53,22 @@ function elapsedColor(iso: string): string {
 }
 
 export function KitchenPage() {
+  const plan = useAuthStore((s) => s.business?.plan ?? 'FREE');
+
+  if (!planMeets(plan, 'PRO')) {
+    return (
+      <PlanLockOverlay
+        feature="Kitchen Display System"
+        description="The KDS shows live orders to your kitchen team in a clear two-column layout — cooking and ready — with elapsed time warnings so nothing goes cold."
+        required="PRO"
+      />
+    );
+  }
+
+  return <KitchenPageInner />;
+}
+
+function KitchenPageInner() {
   const { data, isLoading } = useOrders();
   const toast = useToast();
   const updateStatus = useUpdateOrderStatus();
