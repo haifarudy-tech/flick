@@ -60,3 +60,6 @@ export function emitPlatformOrder(businessId: string, order: unknown) {
 export function emitMenuSynced(businessId: string, payload: unknown) {
   io?.to(`business:${businessId}`).emit('menu:synced', payload);
 }
+export function emitStaffUpdated(businessId: string, payload: unknown) {
+  io?.to(`business:${businessId}`).emit('staff:updated', payload);
+}

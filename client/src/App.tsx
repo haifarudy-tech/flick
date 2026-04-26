@@ -11,6 +11,9 @@ import { KitchenPage } from '@/pages/Kitchen';
 import { DeliveryPage } from '@/pages/Delivery';
 import { DeliveryCallbackPage } from '@/pages/DeliveryCallback';
 import { SettingsPaymentsPage } from '@/pages/SettingsPayments';
+import { AnalyticsPage } from '@/pages/Analytics';
+import { StaffPage } from '@/pages/Staff';
+import { StaffClockPage } from '@/pages/StaffClock';
 import { T } from '@/tokens';
 
 // Placeholder screens for routes that land in later sessions. They render a
@@ -90,7 +93,7 @@ export function App() {
         element={
           <ProtectedRoute>
             <AppShell>
-              <Soon title="Analytics" session={6} />
+              <AnalyticsPage />
             </AppShell>
           </ProtectedRoute>
         }
@@ -110,11 +113,13 @@ export function App() {
         element={
           <ProtectedRoute>
             <AppShell>
-              <Soon title="Staff" session={6} />
+              <StaffPage />
             </AppShell>
           </ProtectedRoute>
         }
       />
+      {/* Public wall-mounted clock widget — no auth or sidebar needed */}
+      <Route path="/staff/clock" element={<StaffClockPage />} />
       <Route
         path="/settings"
         element={

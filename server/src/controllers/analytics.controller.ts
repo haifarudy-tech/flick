@@ -40,7 +40,7 @@ export async function summary(req: Request, res: Response, next: NextFunction) {
         createdAt: { gte: from, lte: to },
         status: { not: 'CANCELLED' },
       },
-      include: { items: true },
+      include: { items: true, payments: true },
     });
 
     const revenue = orders.reduce((s, o) => s + Number(o.total), 0);
@@ -57,29 +57,29 @@ export async function summary(req: Request, res: Response, next: NextFunction) {
       return acc;
     }, {});
 
-    const grossCost = orders.reduce(
-      (s, o) =>
-        s +
-        o.items.reduce(
-          (is, it) =>
-            is +
-            it.quantity *
-              // costPrice isn't on orderItem directly — fall back to 0 when unknown
-              0,
-          0,
-        ),
-      0,
-    );
-    const margin = revenue ? ((revenue - grossCost) / revenue) * 100 : 0;
+    const allPayments = orders.flatMap((o) => o.payments);
+    const totalTips = allPayments.reduce((s, p) => s + Number(p.tip ?? 0), 0);
+    const totalRefunds = allPayments
+      .filter((p) => p.status === 'REFUNDED')
+      .reduce((s, p) => s + Number(p.amount), 0);
+    const byPaymentMethod = allPayments
+      .filter((p) => p.status !== 'REFUNDED')
+      .reduce<Record<string, number>>((acc, p) => {
+        acc[p.method] = (acc[p.method] ?? 0) + Number(p.amount);
+        return acc;
+      }, {});
 
     res.json({
       range: { from, to },
       revenue,
       orders: count,
       avgBasket,
-      grossMarginPct: margin,
+      grossMarginPct: 0,
+      totalTips,
+      totalRefunds,
       byType,
       bySource,
+      byPaymentMethod,
     });
   } catch (err) {
     next(err);
@@ -138,26 +138,42 @@ export async function staffPerformance(req: Request, res: Response, next: NextFu
     const { businessId } = tenantContext(req);
     let { from, to } = resolveRange(req);
     from = await clampByPlan(businessId, from);
+
     const staff = await prisma.user.findMany({
-      where: { businessId },
+      where: { businessId, isActive: true },
       select: {
         id: true,
         name: true,
         role: true,
+        staff: { select: { hourlyRate: true, clockedIn: true } },
         shifts: {
           where: { clockIn: { gte: from, lte: to } },
           select: { hoursWorked: true, salesTotal: true, ordersCount: true },
         },
       },
     });
-    const rows = staff.map((s) => ({
-      id: s.id,
-      name: s.name,
-      role: s.role,
-      hours: s.shifts.reduce((sum, sh) => sum + Number(sh.hoursWorked ?? 0), 0),
-      sales: s.shifts.reduce((sum, sh) => sum + Number(sh.salesTotal ?? 0), 0),
-      orders: s.shifts.reduce((sum, sh) => sum + sh.ordersCount, 0),
-    }));
+
+    const rows = staff.map((s) => {
+      const hours = s.shifts.reduce((sum, sh) => sum + Number(sh.hoursWorked ?? 0), 0);
+      const sales = s.shifts.reduce((sum, sh) => sum + Number(sh.salesTotal ?? 0), 0);
+      const orders = s.shifts.reduce((sum, sh) => sum + sh.ordersCount, 0);
+      const hourlyRate = Number(s.staff?.hourlyRate ?? 0);
+      const labourCost = hours * hourlyRate;
+      const labourCostPct = sales > 0 ? (labourCost / sales) * 100 : 0;
+      return {
+        id: s.id,
+        name: s.name,
+        role: s.role,
+        hours,
+        sales,
+        orders,
+        hourlyRate,
+        labourCost,
+        labourCostPct,
+        clockedIn: s.staff?.clockedIn ?? false,
+      };
+    });
+
     res.json({ staff: rows });
   } catch (err) {
     next(err);
@@ -211,17 +227,42 @@ export async function exportCsv(req: Request, res: Response, next: NextFunction)
         source: true,
         subtotal: true,
         vatAmount: true,
+        discountAmount: true,
         total: true,
+        netAfterCommission: true,
+        platformCommissionRate: true,
         status: true,
+        payments: {
+          select: { method: true, amount: true, tip: true, status: true },
+        },
       },
       orderBy: { createdAt: 'asc' },
     });
-    const header = 'order_number,created_at,type,source,subtotal,vat,total,status\n';
+    const header =
+      'order_number,created_at,type,source,subtotal,vat,discount,total,net_after_commission,commission_rate,status,payment_methods,total_tips,refunded\n';
     const body = orders
-      .map(
-        (o) =>
-          `${o.orderNumber},${o.createdAt.toISOString()},${o.type},${o.source},${o.subtotal},${o.vatAmount},${o.total},${o.status}`,
-      )
+      .map((o) => {
+        const completed = o.payments.filter((p) => p.status !== 'REFUNDED');
+        const methods = [...new Set(completed.map((p) => p.method))].join('+') || 'N/A';
+        const tips = completed.reduce((s, p) => s + Number(p.tip ?? 0), 0);
+        const refunded = o.payments.some((p) => p.status === 'REFUNDED') ? 'Y' : 'N';
+        return [
+          o.orderNumber,
+          o.createdAt.toISOString(),
+          o.type,
+          o.source,
+          Number(o.subtotal).toFixed(2),
+          Number(o.vatAmount).toFixed(2),
+          Number(o.discountAmount ?? 0).toFixed(2),
+          Number(o.total).toFixed(2),
+          Number(o.netAfterCommission ?? o.total).toFixed(2),
+          o.platformCommissionRate ?? 0,
+          o.status,
+          methods,
+          tips.toFixed(2),
+          refunded,
+        ].join(',');
+      })
       .join('\n');
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="flick-orders.csv"');

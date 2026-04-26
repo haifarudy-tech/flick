@@ -425,7 +425,7 @@ sync and webhook cancellation actually work end-to-end.
 | 3 ✅ | Menu Management CRUD + real-time Live Orders + Kitchen Display |
 | 4 ✅ | Delivery Hub UI + Uber Eats / Deliveroo / Just Eat integrations |
 | 5 ✅ | Stripe Terminal in-browser payments + split payments + tips + refunds |
-| 6 | Analytics screen + Staff management + Clock in/out |
+| 6 ✅ | Analytics Dashboard + Staff Management + Clock in/out |
 | 7 | Subscriptions + Onboarding flow + plan gating UX |
 | 8 | Public QR menu + direct QR ordering |
 | 9 | PWA polish + offline mode + icons |
@@ -512,62 +512,168 @@ the order detail drawer.
 
 ---
 
-## 🧭 Next session prompt
+---
 
-Paste this into Claude Code to start session 6.
+## ✅ Session 6 — Analytics Dashboard + Staff Management
 
-```
-Continue building Flick. Read SESSION_PLAN.md first and respect what
-sessions 1-5 already delivered — do not rewrite the foundation, auth,
-POS terminal, Menu Manager, Live Orders, Kitchen Display, Delivery Hub,
-or the payment/refund/tip stack.
+Built the full analytics and staff-management stack. Owners can now see
+exactly how the business is performing and manage their team from one screen.
 
-Scope for THIS session (session 6 — Analytics + Staff management +
-Clock in/out):
+### What's in this session
 
-1. Analytics screen — /analytics
-   - Today's summary KPIs: gross revenue, net revenue, order count,
-     average order value, total tips collected, total refunds issued.
-   - Revenue by hour bar chart (last 24 h, SVG/div bars — no extra
-     charting library).
-   - Top 5 items by revenue and by quantity sold.
-   - Payment method breakdown (card vs cash vs split).
-   - Date range picker: Today / Yesterday / Last 7 days / Last 30 days.
-   - Extend the existing /api/v1/analytics endpoint
-     (analytics.controller.ts already exists) with the fields the UI needs.
+**Server**
+- `GET /api/v1/analytics/summary` — enhanced with `totalTips`,
+  `totalRefunds`, `byPaymentMethod` (card / cash / split).
+- `GET /api/v1/analytics/staff` — enhanced with `hourlyRate`,
+  `labourCost`, `labourCostPct`, `clockedIn` per staff member.
+- `GET /api/v1/analytics/export` — enhanced CSV with payment methods,
+  tips, discount, net-after-commission, and refund flag columns.
+- `GET /api/v1/staff/timesheet?date=` — today's shifts per staff with
+  clock in, clock out, hours, sales (from orders), and tips.
+- `GET /api/v1/staff/roster?slug=` — public endpoint (no auth) for the
+  clock widget; returns names, avatars, clock state, hours today.
+- `POST /api/v1/staff/clock-toggle` — public, PIN-verified clock toggle
+  for the wall tablet widget.
+- `PUT /api/v1/staff/:id` — fixed: `hourlyRate` now correctly updates
+  the `Staff` record, not the `User` row.
+- `POST /api/v1/staff/:id/clock-in` and `clock-out` — now emit
+  `staff:updated` via Socket.io so all dashboards update live.
+- `socket.ts` — added `emitStaffUpdated(businessId, payload)`.
 
-2. Staff management screen — /staff
-   - Staff list: name, role, PIN-set badge, last clock-in, today's
-     hours, hourly rate, status (clocked in / out).
-   - Add staff: creates a User + Staff record (name, email, role,
-     hourly rate). Shows a temporary PIN once.
-   - Edit: name, role, hourly rate. Reset PIN.
-   - Deactivate (soft-delete: isActive = false).
-   - Uses existing User + Staff + Shift models; no schema changes.
+**Analytics Dashboard — /analytics**
+- Date range picker: Today / Yesterday / This Week / This Month / Custom.
+- 5 KPI cards: Revenue (accent), Orders, Avg Basket, Tips (gold),
+  Refunds (red).
+- Hourly Revenue bar chart — 24 div-bars, peak hour highlighted in
+  accent gradient with glow. Hour labels at 0, 6, 12, 18.
+- Order Type Mix — progress bars for Dine In / Takeaway / Delivery.
+- Revenue by Channel — progress bars for POS / Uber Eats / Deliveroo /
+  Just Eat / Direct QR sorted by revenue.
+- Commission Drain callout — gross vs net two-colour bar, commission %,
+  only shown when delivery platforms have orders.
+- Payment Method Breakdown — card / cash / split totals with % of revenue.
+- Top 10 Items — ranked list with rank badge, sold count, revenue.
+- Staff Performance table — name + role + live clock dot, hours,
+  sales, labour cost, labour % pill (green < 25%, gold < 35%, red ≥ 35%).
+- Export CSV button — fetches with auth header, triggers download.
+- Real-time: `useAnalyticsSocket` invalidates all analytics queries on
+  `order:new`, `order:updated`, `order:cancelled`.
 
-3. Clock in/out
-   - Clock-in/out on the Staff screen and a full-screen
-     /staff/clock widget for a wall-mounted tablet.
-   - Worker picks their name, enters PIN, taps Clock In/Out.
-   - Records a Shift row (clockIn / clockOut / hoursWorked).
-   - Today's live hours on the Staff list (sum of open shifts).
-   - Server endpoints:
-       POST /api/v1/staff/clock-in  { userId, pin }
-       POST /api/v1/staff/clock-out { userId }
+**Staff Management — /staff**
+- Staff cards grid (auto-fill, 200px min): avatar with live green dot,
+  name, role badge (colour-coded), today's hours / sales / tips stat
+  pills, Clock In / Clock Out button.
+- Add Staff modal: name, email, password, role dropdown, optional PIN,
+  optional hourly rate. After creation, if a PIN was set, shows it once
+  in a styled modal before closing.
+- Edit Staff panel (slide-in from right): name, role, hourly rate, reset
+  PIN, active toggle, Deactivate with confirmation.
+- Today's Timesheet table: avatar, role, clock-in time, clock-out or
+  live IN badge, hours, sales, tips, labour cost. Footer totals row.
+- Real-time: `useStaffSocket` invalidates staff queries on `staff:updated`.
+- Graceful 403 error state for non-PRO plans.
 
-Reference files:
-- src/tokens.ts — do NOT change these values
-- server/src/controllers/analytics.controller.ts — extend, not rewrite
-- server/src/controllers/staff.controller.ts — extend
-- server/prisma/schema.prisma — Staff / Shift / User already modelled
+**Clock Widget — /staff/clock?b=<slug>** (public, no sidebar)
+- Full-screen dark UI, no auth required.
+- Fetches roster via the public `/roster?slug=` endpoint.
+- Staff tap their card → PIN pad (4 dots + keypad) → clock in or out.
+- Auto-submits on 4th digit; returns to roster with success message after
+  2.5s. Shows error message on wrong PIN.
+- Refreshes roster every 30s automatically.
+- Fixed clock in bottom-right corner.
 
-Out of scope for session 6:
+**Client types + hooks added**
+- `client/src/types/analytics.ts`
+- `client/src/types/staff.ts`
+- `client/src/hooks/useAnalytics.ts`
+- `client/src/hooks/useStaff.ts`
+
+### What is NOT in this session
 - Subscriptions / plan gating UX (session 7)
 - QR menu / public ordering (session 8)
 - Payroll export / HMRC integration
+- Modifier groups UI in Menu Manager (deferred polish)
+
+### How to verify
+1. `npm install` at repo root
+2. `npm run dev`
+3. Sign in → `/analytics` → pick Today → KPI cards show.
+4. Change range to This Week / This Month — data updates.
+5. Export CSV → file downloads with all columns.
+6. `/staff` → add a staff member with PIN → PIN shown once.
+7. Clock In a staff member → green dot appears.
+8. Open `/staff/clock?b=<your-slug>` in a new tab → tap name → enter
+   PIN → clock toggles.
+9. Back on `/staff` → card updates live (socket push).
+10. `npm run typecheck` — zero source-file errors (pre-existing
+    TS5101 baseUrl deprecation warning is not a code error).
+
+---
+
+## 🧭 Next session prompt
+
+Paste this into Claude Code to start session 7.
+
+```
+Continue building Flick. Read SESSION_PLAN.md first and respect what
+sessions 1-6 already delivered — do not rewrite the foundation, auth,
+POS terminal, Menu Manager, Live Orders, Kitchen Display, Delivery Hub,
+payment/refund/tip stack, Analytics, or Staff management.
+
+Scope for THIS session (session 7 — Subscriptions + Onboarding + Plan
+gating UX):
+
+1. Onboarding flow — /onboarding
+   - Triggered automatically for new signups (isOnboarded flag on
+     Business).
+   - Multi-step wizard: welcome → business details (name, address, VAT
+     number, currency, timezone) → first menu category + 3 items →
+     choose plan (Free / Starter / Pro) → done / go to POS.
+   - Skip button on non-essential steps.
+   - Saves progress to server after each step (PATCH /api/v1/business).
+   - After completing, sets Business.isOnboarded = true and redirects
+     to /pos.
+
+2. Subscription management — /settings/subscription
+   - Current plan card: plan name, renewal date, limits bar (locations,
+     menu items, delivery platforms, analytics retention).
+   - Upgrade CTA for each locked feature (e.g. "Unlock Staff Management
+     — upgrade to Pro").
+   - Manage Billing button → Stripe Customer Portal.
+   - Upgrade flow → Stripe Checkout (existing session 1 endpoint).
+   - Downgrade confirmation with data-loss warning.
+
+3. Plan gating UX — surface limits across the app
+   - When a FREE user navigates to /delivery, /staff, or /kitchen,
+     show an UpgradePrompt overlay instead of the page content.
+   - UpgradePrompt component: feature name, plan required, short pitch,
+     Upgrade button.
+   - In Menu Manager: show an item-count limit bar when approaching the
+     FREE plan 50-item cap.
+   - requirePlan middleware already exists on the server — this is purely
+     client-side UX.
+
+4. Settings page — /settings
+   - Replace the "coming in session 7" placeholder.
+   - Tabs: Business Profile | Payments | Subscription.
+   - Business Profile tab: edit name, address, VAT number, VAT rate,
+     tax-inclusive toggle, currency, timezone.
+   - Payments tab: re-use existing SettingsPaymentsPage content.
+   - Subscription tab: re-use the subscription component from step 2.
+
+Reference files:
+- src/tokens.ts — do NOT change these values
+- server/src/controllers/business.controller.ts — extend for onboarding
+- server/prisma/schema.prisma — Business model has all needed fields
+- shared/types — PLAN_LIMITS and planMeets already defined
+
+Out of scope for session 7:
+- QR menu / public ordering (session 8)
+- PWA icons / offline mode (session 9)
+- Email/SMS receipt delivery
 
 At the end:
-- Run `npm run typecheck` in both workspaces — zero errors
-- Update SESSION_PLAN.md: tick session 6, update next session prompt
+- Run `npm run typecheck` — zero source-file errors
+- Update SESSION_PLAN.md: tick session 7, add session 8 prompt
 - Commit and push to the working branch
 ```
