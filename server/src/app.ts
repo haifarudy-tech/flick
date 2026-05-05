@@ -12,10 +12,10 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { initSocketServer } from './services/socket.js';
 
 import authRoutes from './routes/auth.routes.js';
-import businessRoutes from './routes/business.routes.js';
+import businessRoutes, { publicBusinessRouter } from './routes/business.routes.js';
 import menuRoutes, { publicRouter as publicMenuRoutes } from './routes/menu.routes.js';
-import orderRoutes from './routes/order.routes.js';
-import paymentRoutes from './routes/payment.routes.js';
+import orderRoutes, { publicOrderRouter } from './routes/order.routes.js';
+import paymentRoutes, { publicPaymentRouter } from './routes/payment.routes.js';
 import deliveryRoutes from './routes/delivery.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import staffRoutes from './routes/staff.routes.js';
@@ -65,10 +65,15 @@ app.get('/api/v1/health', (_req, res) => {
 
 // ---- API routes ----
 app.use('/api/v1/auth', authRoutes);
+// Public business routes (QR code, etc.) — mounted before auth middleware
+app.use('/api/v1/business', publicBusinessRouter);
 app.use('/api/v1/business', businessRoutes);
 app.use('/api/v1/menu', publicMenuRoutes);
 app.use('/api/v1/menu', menuRoutes);
+// Public order + payment routes (guest QR checkout) — mounted before auth middleware
+app.use('/api/v1/orders', publicOrderRouter);
 app.use('/api/v1/orders', orderRoutes);
+app.use('/api/v1/payments', publicPaymentRouter);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/delivery', deliveryRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { tenantContext } from '../middleware/auth.js';
 import { notFound, badRequest } from '../lib/httpError.js';
-import { PLAN_LIMITS } from '../../../shared/types/index.js';
+import { PLAN_LIMITS, type Plan } from '../../../shared/types/index.js';
 import { queueMenuSync } from '../services/menuSync.js';
 
 export async function listMenu(req: Request, res: Response, next: NextFunction) {
@@ -49,7 +49,7 @@ export async function createItem(req: Request, res: Response, next: NextFunction
 
     const business = await prisma.business.findUnique({ where: { id: businessId } });
     if (!business) throw notFound();
-    const limit = PLAN_LIMITS[business.plan].maxMenuItems;
+    const limit = PLAN_LIMITS[business.plan as Plan].maxMenuItems;
     if (limit !== Infinity) {
       const count = await prisma.menuItem.count({ where: { businessId } });
       if (count >= limit) {
@@ -149,6 +149,12 @@ export async function publicMenu(req: Request, res: Response, next: NextFunction
           basePrice: true,
           categoryId: true,
           sortOrder: true,
+          isPopular: true,
+          modifierGroups: {
+            include: {
+              modifiers: { where: { isAvailable: true } },
+            },
+          },
         },
         orderBy: [{ categoryId: 'asc' }, { sortOrder: 'asc' }],
       }),
