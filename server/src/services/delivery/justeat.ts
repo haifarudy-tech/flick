@@ -35,8 +35,6 @@ export async function exchangeCodeForToken(code: string, redirectUri: string) {
   };
 }
 
-import type { PricedMenuItem } from './pricing.js';
-
 export async function syncMenu(
   accessToken: string,
   menu: PricedMenuItem[],

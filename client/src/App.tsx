@@ -16,11 +16,12 @@ import { AnalyticsPage } from '@/pages/Analytics';
 import { StaffPage } from '@/pages/Staff';
 import { StaffClockPage } from '@/pages/StaffClock';
 import { OnboardingPage } from '@/pages/Onboarding';
+import { PublicMenuPage } from '@/pages/PublicMenu';
+import { PublicMenuConfirmationPage } from '@/pages/PublicMenuConfirmation';
+import { QRSettingsPage } from '@/pages/QRSettings';
 import { T } from '@/tokens';
 
-// Placeholder screens for routes that land in later sessions. They render a
-// minimal "coming soon" block so the sidebar nav always works without dead
-// links. Each will be replaced in its respective session.
+// Placeholder screens for routes that land in later sessions.
 function Soon({ title, session }: { title: string; session: number }) {
   return (
     <div
@@ -44,12 +45,20 @@ function Soon({ title, session }: { title: string; session: number }) {
 export function App() {
   return (
     <Routes>
-      {/* Public routes */}
+      {/* ── Public (no auth, no sidebar) ─────────────────────────────────── */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/pos-login" element={<PosLoginPage />} />
+      <Route path="/staff/clock" element={<StaffClockPage />} />
 
-      {/* Protected routes — all share the AppShell (sidebar + outlet area) */}
+      {/* ── Public QR menu ───────────────────────────────────────────────── */}
+      <Route path="/menu/:slug" element={<PublicMenuPage />} />
+      <Route
+        path="/menu/:slug/order/:orderId/confirmation"
+        element={<PublicMenuConfirmationPage />}
+      />
+
+      {/* ── Protected (shared AppShell) ───────────────────────────────────── */}
       <Route
         path="/pos"
         element={
@@ -120,8 +129,6 @@ export function App() {
           </ProtectedRoute>
         }
       />
-      {/* Public wall-mounted clock widget — no auth or sidebar needed */}
-      <Route path="/staff/clock" element={<StaffClockPage />} />
       <Route
         path="/settings"
         element={
@@ -152,7 +159,16 @@ export function App() {
           </ProtectedRoute>
         }
       />
-
+      <Route
+        path="/settings/qr"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <QRSettingsPage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/settings/delivery/callback/:platform"
         element={

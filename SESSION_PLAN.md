@@ -427,7 +427,7 @@ sync and webhook cancellation actually work end-to-end.
 | 5 ✅ | Stripe Terminal in-browser payments + split payments + tips + refunds |
 | 6 ✅ | Analytics Dashboard + Staff Management + Clock in/out |
 | 7 | Subscriptions + Onboarding flow + plan gating UX |
-| 8 | Public QR menu + direct QR ordering |
+| 8 ✅ | Public QR menu + direct QR ordering |
 | 9 | PWA polish + offline mode + icons |
 | 10 | End-to-end smoke tests + Sentry wiring + launch prep |
 
@@ -675,5 +675,178 @@ Out of scope for session 7:
 At the end:
 - Run `npm run typecheck` — zero source-file errors
 - Update SESSION_PLAN.md: tick session 7, add session 8 prompt
+- Commit and push to the working branch
+```
+
+---
+
+## ✅ Session 8 — Public QR Menu + Direct Customer Ordering
+
+Built the full customer-facing ordering channel: a beautiful mobile-first menu
+that customers reach by scanning a QR code, with Stripe guest checkout and
+live order delivery to the kitchen.
+
+### What's in this session
+
+**Server**
+- `GET /api/v1/menu/public/:slug` — enhanced to include `isPopular` and
+  full `modifierGroups → modifiers` tree for the item detail modal.
+- `POST /api/v1/payments/public/intent` — no-auth endpoint; accepts cart
+  (items + customer details + order type), creates an `Order`
+  (`source: DIRECT_QR`) and a Stripe hosted Checkout Session, stores the
+  session id in a PENDING `Payment`, returns `{ orderId, checkoutUrl }`.
+  Plan-gated: returns 402 for FREE plan businesses.
+- `GET /api/v1/orders/public/:id?session_id=cs_xxx` — no-auth endpoint for
+  the confirmation page; retrieves the Stripe Checkout Session, checks
+  `payment_status === 'paid'`, marks Payment COMPLETED, then emits
+  `order:new` on Socket.io so the order appears live in the kitchen and
+  Live Orders screen. Idempotent on repeat loads.
+- `GET /api/v1/business/qr/:slug` — no-auth; generates a 512×512 QR code
+  PNG using the `qrcode` package pointing at the public menu URL.
+- Prisma types regenerated (`prisma generate`) — fixes server typecheck.
+- Pre-existing `justeat.ts` duplicate identifier fixed.
+- `menu.controller.ts` + `analytics.controller.ts` PLAN_LIMITS cast fixed.
+
+**Client — Public Menu (`/menu/:slug`)**
+- No auth required, no sidebar.
+- Hero section: business logo/initial avatar, name, "Open now" badge, address.
+- Search bar with instant filtering across names + descriptions.
+- Sticky category tab bar with scroll-spy (IntersectionObserver).
+- Item list: emoji/image thumbnail, name, popular ★ badge, description
+  (2-line clamp), price, cart-count badge, + button.
+- Item detail modal (bottom sheet): modifier groups (radio for single-select,
+  checkbox for multi-select, required badge), quantity ±, live total,
+  "Add to order" CTA.
+- FREE plan: "Online ordering not available" amber banner; items are still
+  browsable.
+
+**Client — Cart + Checkout Sheet**
+- Floating cart button: item count pill + total, only shown when cart is
+  non-empty and plan allows ordering.
+- Checkout sheet (slide-up): cart review with ±/remove, order type selector
+  (Dine In / Takeaway / Delivery), conditional fields (table number, delivery
+  address), customer name + phone + email, order notes.
+- "Pay" button POSTs to `/api/v1/payments/public/intent` then
+  `window.location.href`-redirects to Stripe hosted Checkout.
+
+**Client — Confirmation page (`/menu/:slug/order/:orderId/confirmation`)**
+- Calls `GET /api/v1/orders/public/:orderId?session_id=cs_xxx` to verify +
+  activate the order.
+- Shows order number (large, accent), type badge, item list, totals,
+  order notes, estimated time info banner.
+- "Back to Menu" link.
+
+**Client — QR Settings (`/settings/qr`)**
+- Accessible via ▦ QR link in the sidebar.
+- Displays the public menu URL with Copy button + "Preview menu ↗" link.
+- Renders the QR code image from `/api/v1/business/qr/:slug`.
+- "⬇ Download PNG" button (fetches + triggers browser download).
+- "🖨 Print Poster" button (browser print with a clean single-block
+  poster layout showing name, "Scan to Order!", QR, and URL).
+- "How it works" explainer card (4 steps).
+
+**Real-time**
+- DIRECT_QR orders appear in Live Orders + Kitchen Display instantly via
+  the existing `order:new` Socket.io event (emitted only after payment
+  confirmed, not at order creation time).
+- Delivery Hub "Direct QR" filter already handles DIRECT_QR source.
+
+**Plan gating**
+- FREE plan: public menu is read-only; "Add to order" button disabled,
+  floating cart not shown, amber banner displayed.
+- STARTER+: full ordering enabled.
+- Server returns 402 with `UPGRADE_REQUIRED` code if a FREE-plan business
+  receives a checkout request.
+
+### What is NOT in this session
+
+- Email / SMS notifications to customers when order is ready (logged server-side, not sent)
+- Subscriptions + onboarding (session 7 deferred — /settings is still a placeholder)
+- PWA icons / offline mode (session 9)
+- Tip input on the guest checkout (Stripe Checkout handles their own tip UX)
+- Table-number QR param pre-fill (nice-to-have, future polish)
+
+### How to verify
+
+1. `npm install` + `cd server && npx prisma generate`
+2. `npm run dev`
+3. Create a business and add some menu items with modifier groups.
+4. Visit `/settings/qr` → copy the menu URL → open in an incognito tab.
+5. Browse the menu, search, switch categories, open item modal, add
+   modifiers, add to cart.
+6. Tap "View Order" → review cart → fill details → tap "Pay".
+7. Complete payment on Stripe's hosted page (use test card 4242…).
+8. Confirm redirect to `/menu/:slug/order/:id/confirmation` showing order #.
+9. Back in Flick: `/orders` shows the DIRECT_QR order instantly (socket-pushed).
+10. `/kitchen` shows it too.
+11. Visit `/settings/qr` → Download PNG → QR code downloads.
+12. `npm run typecheck` — zero errors.
+
+---
+
+## 🧭 Next session prompt
+
+Paste this into Claude Code to start session 9.
+
+```
+Continue building Flick. Read SESSION_PLAN.md first and respect everything
+sessions 1–8 already delivered.
+
+Scope for THIS session (session 9 — PWA polish + Onboarding + Subscriptions):
+
+1. PWA polish
+   - Replace the placeholder PWA icons in client/public/ with proper
+     generated icons (192×192 and 512×512 PNG, using the Flick "F" logo
+     style matching the sidebar avatar: accent gradient, rounded square).
+   - Ensure the web app manifest (vite-plugin-pwa config in vite.config.ts)
+     is complete: name, short_name, theme_color (#E07A4A), background_color
+     (#0C0B09), display: standalone, start_url, icons.
+   - Add an install prompt (beforeinstallprompt) that appears after first use
+     as a dismissible banner at the bottom of the POS screen only.
+   - Ensure offline mode works for the POS: the existing offlineQueue
+     (IndexedDB) already queues orders; add a visible "You're offline" banner
+     and a "Syncing X orders…" indicator when back online.
+
+2. Onboarding flow — /onboarding
+   - Triggered automatically for new signups (add isOnboarded Boolean field
+     to Business model via Prisma migration).
+   - Multi-step wizard (5 steps):
+     Step 1 — Welcome (business name pre-filled, tagline).
+     Step 2 — Business details (address, city, postcode, VAT number,
+               currency, timezone).
+     Step 3 — First menu: add at least one category + 3 items (can skip).
+     Step 4 — Choose plan (Free / Starter / Pro cards, "Continue free"
+               skips payment, paid plans redirect to Stripe Checkout).
+     Step 5 — QR code: preview + download (re-uses QRSettings content).
+   - Skip button on steps 2–5.
+   - PATCH /api/v1/business after each step.
+   - On completion: sets Business.isOnboarded = true, redirects to /pos.
+   - ProtectedRoute: if !isOnboarded, redirect to /onboarding instead of
+     the requested page (except /onboarding itself).
+
+3. Subscription management — /settings/subscription
+   - Current plan card: plan name, renewal date, feature limits bar.
+   - Upgrade CTA for each locked feature.
+   - "Manage Billing" → Stripe Customer Portal.
+   - Upgrade flow → Stripe Checkout (existing session 1 endpoint).
+
+4. Settings page — /settings
+   - Replace the "coming in session 7" placeholder.
+   - Tabs: Business Profile | Payments | QR & Ordering | Subscription.
+   - Business Profile tab: edit name, address, VAT number, VAT rate,
+     tax-inclusive toggle, currency, timezone.
+   - Payments tab: re-use SettingsPaymentsPage content.
+   - QR & Ordering tab: re-use QRSettingsPage content.
+   - Subscription tab: re-use subscription component from step 3.
+
+Reference files:
+- src/tokens.ts — do NOT change
+- All sessions 1–8 work is intact
+
+Out of scope: email/SMS notifications, Sentry wiring, production deploy.
+
+At the end:
+- Run npm run typecheck — zero errors
+- Update SESSION_PLAN.md: tick session 9, add session 10 prompt
 - Commit and push to the working branch
 ```

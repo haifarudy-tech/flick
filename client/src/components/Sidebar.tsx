@@ -21,6 +21,7 @@ const NAV = [
   { key: 'menu', icon: '☰', label: 'Menu', to: '/menu-manager' },
   { key: 'staff', icon: '◉', label: 'Staff', to: '/staff' },
   { key: 'settings', icon: '⚙', label: 'Settings', to: '/settings' },
+  { key: 'qr', icon: '▦', label: 'QR', to: '/settings/qr' },
 ] as const;
 
 export function Sidebar() {

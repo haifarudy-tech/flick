@@ -1,8 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma.js';
 import { tenantContext } from '../middleware/auth.js';
 import { notFound } from '../lib/httpError.js';
+import { env } from '../lib/env.js';
 
 export async function getBusiness(req: Request, res: Response, next: NextFunction) {
   try {
@@ -28,6 +30,42 @@ const updateSchema = z.object({
   taxInclusive: z.boolean().optional(),
   logo: z.string().url().optional(),
 });
+
+// Public — GET /api/v1/business/qr/:slug — returns a QR code PNG for the public menu URL
+export async function generateQRCode(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { slug } = req.params;
+    if (!slug) return res.status(400).json({ error: { message: 'Missing slug' } });
+
+    const business = await prisma.business.findUnique({
+      where: { slug },
+      select: { name: true },
+    });
+    if (!business) throw notFound('Business not found');
+
+    const url = `${env.FRONTEND_URL}/menu/${slug}`;
+    const buffer = await QRCode.toBuffer(url, {
+      type: 'png',
+      width: 512,
+      margin: 2,
+      color: { dark: '#1E1B16', light: '#EDE8DF' },
+    });
+
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${slug}-qr.png"`,
+    );
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+}
 
 export async function updateBusiness(req: Request, res: Response, next: NextFunction) {
   try {
