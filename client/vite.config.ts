@@ -13,7 +13,7 @@ export default defineConfig({
         name: 'Flick POS',
         short_name: 'Flick',
         description: 'Flick — POS + delivery aggregation for UK cafes and restaurants',
-        theme_color: '#E07A4A',
+        theme_color: '#0C0B09',
         background_color: '#0C0B09',
         display: 'standalone',
         orientation: 'any',

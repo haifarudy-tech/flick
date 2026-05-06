@@ -426,10 +426,10 @@ sync and webhook cancellation actually work end-to-end.
 | 4 ✅ | Delivery Hub UI + Uber Eats / Deliveroo / Just Eat integrations |
 | 5 ✅ | Stripe Terminal in-browser payments + split payments + tips + refunds |
 | 6 ✅ | Analytics Dashboard + Staff Management + Clock in/out |
-| 7 | Subscriptions + Onboarding flow + plan gating UX |
+| 7 ✅ | Subscriptions + Onboarding flow + plan gating UX |
 | 8 ✅ | Public QR menu + direct QR ordering |
-| 9 | PWA polish + offline mode + icons |
-| 10 | End-to-end smoke tests + Sentry wiring + launch prep |
+| 9 ✅ | Sentry + ErrorBoundary + offline indicator + PWA basics |
+| 10 | Production deployment + launch prep |
 
 Each session should:
 1. Open `SESSION_PLAN.md`
@@ -680,6 +680,50 @@ At the end:
 
 ---
 
+## ✅ Session 7 — Subscriptions + Onboarding + Plan Gating
+
+Built the full subscription management surface, the new-account onboarding
+wizard, and woven plan-aware gating across the rest of the app.
+
+### What's in this session
+
+**Server**
+- `GET /api/v1/subscription/usage` — returns current `menuItems`,
+  `locations`, and `deliveryPlatforms` counts for the limit bars.
+- Annual billing support: new `STRIPE_PRICE_*_ANNUAL` env vars and
+  `billingPeriod` parameter on the existing checkout endpoint.
+- Onboarding state on Business model surfaced via PATCH `/api/v1/business`
+  so each wizard step can persist progress.
+
+**Client — Onboarding (`/onboarding`)**
+- 5-step wizard: business details → first menu items → delivery setup →
+  staff invite → done. Every step is skippable so a brand-new account can
+  reach the POS in seconds.
+- Triggered automatically after signup; redirect is replaced with
+  `/onboarding` once the user account is created.
+
+**Client — Settings → Billing (`/settings/billing`)**
+- 4-plan card grid: Free / Starter / Pro / Enterprise.
+- Monthly / Annual toggle with the 20% annual discount displayed.
+- Current-plan badge, per-feature usage bars, "approaching limit"
+  warnings (40 / 45 / 49 of 50 menu items on FREE).
+- "Manage Billing" → Stripe Customer Portal.
+- "Upgrade" → Stripe Checkout (existing session-1 endpoint).
+
+**Plan gating UX**
+- New `UpgradeModal` and `PlanLockOverlay` components — reusable across
+  the app for any plan-locked feature.
+- Kitchen (PRO), Staff (PRO), Delivery Platforms (STARTER/PRO),
+  Analytics CSV export (PRO) all gated client-side with these components.
+- Menu Manager soft warnings as a FREE business approaches the 50-item cap.
+- Sidebar shows a plan-badge pill that links straight to billing.
+
+### What is NOT in this session
+- QR menu / public ordering (session 8)
+- PWA polish / Sentry wiring (sessions 9 / 10)
+
+---
+
 ## ✅ Session 8 — Public QR Menu + Direct Customer Ordering
 
 Built the full customer-facing ordering channel: a beautiful mobile-first menu
@@ -784,69 +828,143 @@ live order delivery to the kitchen.
 
 ---
 
+## ✅ Session 9 — Sentry + ErrorBoundary + Offline Indicator + PWA basics
+
+Lean polish session. No new features — just the safety net pieces a
+production app needs: visibility into client + server errors, a friendly
+recovery surface when something blows up in the browser, a global offline
+banner with auto-sync confirmation, and proper PWA install metadata so
+Flick looks right when added to a phone home screen.
+
+### What's in this session
+
+**Sentry — client (`@sentry/react`)**
+- New `client/src/lib/sentry.ts` initialises Sentry from
+  `VITE_SENTRY_DSN` — no DSN means Sentry is a no-op, so local dev stays
+  clean.
+- Subscribes to the auth store and sets `Sentry.setUser({ id })` plus
+  `business_id` / `role` / `plan` tags. **No emails, names, or PII** are
+  ever sent — IDs only.
+- `tracesSampleRate: 0` and `sendDefaultPii: false` — error capture only.
+
+**ErrorBoundary — `client/src/components/ErrorBoundary.tsx`**
+- Class component wrapping the app at the root (above `<BrowserRouter>`).
+- Catches render-tree errors, sends them to Sentry via the wrapper, and
+  renders a friendly screen: red `!` glyph, "Something went wrong",
+  copy explaining we've been notified, and a coral "Try again" button
+  that resets the boundary state.
+
+**Sentry — server (`@sentry/node`)**
+- New `server/src/lib/sentry.ts` initialises before Express is built so
+  instrumentation hooks attach correctly. Same DSN-gating pattern.
+- `errorHandler` middleware tags non-`HttpError` exceptions with the
+  caller's `user.sub`, `business_id`, `role`, `plan`, `route`, and
+  `method` before forwarding to Sentry. 4xx `HttpError` responses are
+  intentionally NOT captured (those are user errors, not bugs).
+
+**Offline indicator — `client/src/components/OfflineIndicator.tsx`**
+- Mounted globally inside the `<ToastProvider>` so it shows on every
+  authenticated screen and the public QR menu.
+- Listens to `online` / `offline` window events; polls `listQueued()`
+  every 5s to refresh the queued-order count.
+- When offline: red banner across the top reading
+  "You're offline. We'll sync as soon as you reconnect." with an
+  "X orders queued" pill if the IndexedDB queue is non-empty.
+- On reconnect: calls `flushOfflineQueue()` and shows a success toast
+  ("Synced 3 queued orders") whenever flushed > 0. Banner auto-hides.
+- The pre-existing inline offline pill on `/pos` is left untouched.
+
+**PWA — icons + manifest**
+- Generated `client/public/icon-192.png`, `icon-512.png`,
+  `icon-512-maskable.png`, and `apple-touch-icon.png` (180×180) from
+  the favicon design — Flick coral `#E07A4A` "F" on a dark `#0C0B09`
+  rounded-square background.
+- `vite-plugin-pwa` manifest in `vite.config.ts` updated:
+  `theme_color: '#0C0B09'`, `display: 'standalone'`, `name`, icons all
+  wired.
+- `index.html` adds `apple-touch-icon`, `apple-mobile-web-app-capable`,
+  `apple-mobile-web-app-status-bar-style`, and
+  `apple-mobile-web-app-title` meta tags so iOS home-screen installs
+  pick up the right title and chrome.
+- Service worker registration is handled by `VitePWA({ registerType:
+  'autoUpdate' })` — no extra wiring required.
+
+### What is NOT in this session
+- Beforeinstallprompt banner (deferred — out of scope for "lean polish")
+- Skeleton loaders / empty-state illustrations
+- Mobile audit / bundle optimisation
+- Production deployment + smoke tests (session 10)
+
+### How to verify
+1. `npm install` then `npm run typecheck` — zero errors.
+2. `npm run dev`. Sign in, then in DevTools toggle the network to
+   "Offline" — red banner appears at the top of every screen.
+3. Create an order while offline → banner shows "1 order queued".
+4. Toggle back to "Online" — banner disappears, success toast appears
+   ("Synced 1 queued order"), and the order appears in `/orders`.
+5. With `VITE_SENTRY_DSN` set, throw inside any component → friendly
+   ErrorBoundary screen renders, "Try again" resets it, event lands in
+   Sentry tagged with `business_id` and `role` (no PII).
+6. With `SENTRY_DSN` set on the server, hit any handler that throws an
+   un-caught exception → 500 response, Sentry event tagged with
+   `business_id` / `route` / `method`.
+7. `vite build && vite preview` — manifest served at `/manifest.webmanifest`,
+   icons resolve, "Add to Home Screen" on iOS shows the Flick logo.
+
+---
+
 ## 🧭 Next session prompt
 
-Paste this into Claude Code to start session 9.
+Paste this into Claude Code to start session 10.
 
 ```
 Continue building Flick. Read SESSION_PLAN.md first and respect everything
-sessions 1–8 already delivered.
+sessions 1–9 already delivered — do not rewrite the foundation, auth, POS,
+Menu Manager, Live Orders, Kitchen, Delivery Hub, payments, Analytics,
+Staff, Onboarding, Subscriptions, public QR menu, Sentry wiring,
+ErrorBoundary, offline indicator, or PWA manifest.
 
-Scope for THIS session (session 9 — PWA polish + Onboarding + Subscriptions):
+Scope for THIS session (session 10 — Production deployment + launch prep):
 
-1. PWA polish
-   - Replace the placeholder PWA icons in client/public/ with proper
-     generated icons (192×192 and 512×512 PNG, using the Flick "F" logo
-     style matching the sidebar avatar: accent gradient, rounded square).
-   - Ensure the web app manifest (vite-plugin-pwa config in vite.config.ts)
-     is complete: name, short_name, theme_color (#E07A4A), background_color
-     (#0C0B09), display: standalone, start_url, icons.
-   - Add an install prompt (beforeinstallprompt) that appears after first use
-     as a dismissible banner at the bottom of the POS screen only.
-   - Ensure offline mode works for the POS: the existing offlineQueue
-     (IndexedDB) already queues orders; add a visible "You're offline" banner
-     and a "Syncing X orders…" indicator when back online.
+1. Production-ready configuration
+   - Server: confirm `helmet` CSP for the production frontend domain;
+     trust-proxy is already on. Add a `/api/v1/health/db` that runs a
+     trivial Prisma query so the platform health-check pings the
+     database, not just the process.
+   - Client: confirm Vite `build` produces the PWA manifest +
+     icon-192/icon-512/maskable into `dist/` and that
+     `apple-touch-icon.png` is bundled.
+   - Document the full env-var checklist in `docs/DEPLOY.md`
+     (server + client) — pull from `server/.env.example` and
+     `client/.env.example`.
 
-2. Onboarding flow — /onboarding
-   - Triggered automatically for new signups (add isOnboarded Boolean field
-     to Business model via Prisma migration).
-   - Multi-step wizard (5 steps):
-     Step 1 — Welcome (business name pre-filled, tagline).
-     Step 2 — Business details (address, city, postcode, VAT number,
-               currency, timezone).
-     Step 3 — First menu: add at least one category + 3 items (can skip).
-     Step 4 — Choose plan (Free / Starter / Pro cards, "Continue free"
-               skips payment, paid plans redirect to Stripe Checkout).
-     Step 5 — QR code: preview + download (re-uses QRSettings content).
-   - Skip button on steps 2–5.
-   - PATCH /api/v1/business after each step.
-   - On completion: sets Business.isOnboarded = true, redirects to /pos.
-   - ProtectedRoute: if !isOnboarded, redirect to /onboarding instead of
-     the requested page (except /onboarding itself).
+2. Deployment manifests
+   - `server/Dockerfile` — multi-stage Node 20 build, runs
+     `prisma migrate deploy` then `node dist/app.js`.
+   - `client/Dockerfile` (or `vercel.json` / `netlify.toml`) — static
+     SPA serve with SPA-fallback routing to `index.html`.
+   - `docker-compose.yml` for a one-command local prod-like run
+     (Postgres + Redis + server + client).
 
-3. Subscription management — /settings/subscription
-   - Current plan card: plan name, renewal date, feature limits bar.
-   - Upgrade CTA for each locked feature.
-   - "Manage Billing" → Stripe Customer Portal.
-   - Upgrade flow → Stripe Checkout (existing session 1 endpoint).
+3. Smoke tests
+   - One Playwright spec per critical flow: signup → onboarding skip →
+     POS sale (cash) → order appears in /orders. No exhaustive coverage
+     — just a "did launch break the boring path" check.
+   - GitHub Action workflow that runs typecheck + the smoke spec on PRs
+     to `main`.
 
-4. Settings page — /settings
-   - Replace the "coming in session 7" placeholder.
-   - Tabs: Business Profile | Payments | QR & Ordering | Subscription.
-   - Business Profile tab: edit name, address, VAT number, VAT rate,
-     tax-inclusive toggle, currency, timezone.
-   - Payments tab: re-use SettingsPaymentsPage content.
-   - QR & Ordering tab: re-use QRSettingsPage content.
-   - Subscription tab: re-use subscription component from step 3.
+4. Launch checklist — `docs/LAUNCH.md`
+   - DNS, TLS, Stripe live keys, Sentry projects (client + server),
+     Supabase RLS audit, JWT secret rotation, monitoring dashboards,
+     rollback plan. Concrete checkboxes, not platitudes.
 
-Reference files:
-- src/tokens.ts — do NOT change
-- All sessions 1–8 work is intact
-
-Out of scope: email/SMS notifications, Sentry wiring, production deploy.
+Out of scope:
+- New product features
+- Email / SMS deliverability work
+- Tap-to-Pay native bridges
 
 At the end:
-- Run npm run typecheck — zero errors
-- Update SESSION_PLAN.md: tick session 9, add session 10 prompt
-- Commit and push to the working branch
+- npm run typecheck — zero errors
+- Update SESSION_PLAN.md: tick session 10, mark the project shippable
+- Commit and push
 ```

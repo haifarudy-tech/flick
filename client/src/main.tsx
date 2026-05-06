@@ -8,6 +8,7 @@ import { bootstrapSession } from './lib/api';
 import { wireSocketToAuth } from './lib/socket';
 import { ToastProvider } from './components/ui/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { initSentry } from './lib/sentry';
 
 initSentry();
@@ -26,6 +27,7 @@ createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <QueryProvider>
           <ToastProvider>
+            <OfflineIndicator />
             <App />
           </ToastProvider>
         </QueryProvider>
