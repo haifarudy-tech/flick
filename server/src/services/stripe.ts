@@ -11,13 +11,21 @@ export function getStripe(): Stripe {
   return _stripe;
 }
 
-export function planToPriceId(plan: 'STARTER' | 'PRO' | 'ENTERPRISE'): string {
-  const map: Record<string, string | undefined> = {
+export function planToPriceId(
+  plan: 'STARTER' | 'PRO' | 'ENTERPRISE',
+  billingPeriod: 'monthly' | 'annual' = 'monthly',
+): string {
+  const monthly: Record<string, string | undefined> = {
     STARTER: env.STRIPE_PRICE_STARTER,
     PRO: env.STRIPE_PRICE_PRO,
     ENTERPRISE: env.STRIPE_PRICE_ENTERPRISE,
   };
-  const id = map[plan];
+  const annual: Record<string, string | undefined> = {
+    STARTER: env.STRIPE_PRICE_STARTER_ANNUAL,
+    PRO: env.STRIPE_PRICE_PRO_ANNUAL,
+    ENTERPRISE: env.STRIPE_PRICE_ENTERPRISE_ANNUAL,
+  };
+  const id = (billingPeriod === 'annual' ? annual[plan] : undefined) ?? monthly[plan];
   if (!id) throw new Error(`No Stripe price configured for plan ${plan}.`);
   return id;
 }

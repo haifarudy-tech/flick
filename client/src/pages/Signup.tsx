@@ -42,7 +42,7 @@ export function SignupPage() {
         plan,
       });
       setAuth({ accessToken: res.accessToken, user: res.user, business: res.business });
-      nav('/pos', { replace: true });
+      nav('/onboarding', { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong.');
     } finally {

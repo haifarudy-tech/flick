@@ -4,6 +4,9 @@ import { fmt } from '@/lib/format';
 import { useToast } from '@/components/ui/Toast';
 import { useStaff, useTimesheet, useCreateStaff, useUpdateStaff, useClockIn, useClockOut, useStaffSocket } from '@/hooks/useStaff';
 import type { StaffMember, TimesheetEntry } from '@/types/staff';
+import { planMeets } from '@flick/shared/types';
+import { useAuthStore } from '@/stores/auth';
+import { PlanLockOverlay } from '@/components/UpgradeModal';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -524,6 +527,22 @@ function TimesheetTable({ rows }: { rows: TimesheetEntry[] }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function StaffPage() {
+  const plan = useAuthStore((s) => s.business?.plan ?? 'FREE');
+
+  if (!planMeets(plan, 'PRO')) {
+    return (
+      <PlanLockOverlay
+        feature="Staff Management"
+        description="Add team members, assign roles (owner, manager, cashier, kitchen), track clock-in/out, and view daily timesheets — all from Flick."
+        required="PRO"
+      />
+    );
+  }
+
+  return <StaffPageInner />;
+}
+
+function StaffPageInner() {
   const [showAdd, setShowAdd] = useState(false);
   const [editingMember, setEditingMember] = useState<StaffMember | null>(null);
 

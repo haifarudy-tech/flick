@@ -12,6 +12,9 @@ import type { DeliveryPlatformConnection } from '@/types/delivery';
 import { DELIVERY_PLATFORMS } from '@/types/delivery';
 import type { Order } from '@/types/order';
 import type { DeliveryPlatform } from '@flick/shared/types';
+import { planMeets, PLAN_LIMITS } from '@flick/shared/types';
+import { useAuthStore } from '@/stores/auth';
+import { UpgradeModal } from '@/components/UpgradeModal';
 
 export function DeliveryPlatformsTab({
   todayOrders,
@@ -20,6 +23,10 @@ export function DeliveryPlatformsTab({
   todayOrders: Order[];
   platforms: DeliveryPlatformConnection[];
 }) {
+  const plan = useAuthStore((s) => s.business?.plan ?? 'FREE');
+  const connectedCount = platforms.filter((p) => p.status === 'CONNECTED').length;
+  const platformAllowance = PLAN_LIMITS[plan].deliveryPlatforms;
+
   return (
     <div
       style={{
@@ -40,6 +47,15 @@ export function DeliveryPlatformsTab({
           (s, o) => s + (o.netAfterCommission ?? o.total),
           0,
         );
+        // Can connect: plan allows platforms AND haven't hit the limit yet (or already connected)
+        const alreadyConnected = conn?.status === 'CONNECTED';
+        const canConnect =
+          meta.key === 'DIRECT_QR' ||
+          alreadyConnected ||
+          (planMeets(plan, 'STARTER') && connectedCount < platformAllowance);
+        // PRO required for Just Eat (3rd platform slot)
+        const requiresPro = meta.key === 'JUST_EAT' && !planMeets(plan, 'PRO');
+
         return (
           <PlatformCard
             key={meta.key}
@@ -48,6 +64,16 @@ export function DeliveryPlatformsTab({
             orderCount={ordersForThis.length}
             gross={gross}
             net={net}
+            canConnect={canConnect && !requiresPro}
+            upgradeRequired={
+              !planMeets(plan, 'STARTER')
+                ? 'STARTER'
+                : requiresPro
+                ? 'PRO'
+                : connectedCount >= platformAllowance && !alreadyConnected
+                ? 'PRO'
+                : null
+            }
           />
         );
       })}
@@ -61,12 +87,16 @@ function PlatformCard({
   orderCount,
   gross,
   net,
+  canConnect,
+  upgradeRequired,
 }: {
   meta: (typeof DELIVERY_PLATFORMS)[number];
   conn: DeliveryPlatformConnection | null | undefined;
   orderCount: number;
   gross: number;
   net: number;
+  canConnect?: boolean;
+  upgradeRequired?: 'STARTER' | 'PRO' | null;
 }) {
   const isDirectQr = meta.key === 'DIRECT_QR';
   const connected = isDirectQr || conn?.status === 'CONNECTED';
@@ -78,6 +108,7 @@ function PlatformCard({
   const triggerSync = useTriggerSync();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   const handleConnect = async () => {
     if (!meta.apiKey) return;
@@ -297,11 +328,30 @@ function PlatformCard({
               Disconnect
             </button>
           </>
+        ) : upgradeRequired ? (
+          <button
+            type="button"
+            onClick={() => setShowUpgrade(true)}
+            style={{
+              flex: 1,
+              padding: '10px',
+              borderRadius: 10,
+              background: 'transparent',
+              border: `1px dashed ${T.border}`,
+              color: T.textMid,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            🔒 {upgradeRequired}+ required
+          </button>
         ) : (
           <button
             type="button"
             onClick={handleConnect}
-            disabled={busy || startConnect.isPending}
+            disabled={busy || startConnect.isPending || canConnect === false}
             style={{
               flex: 1,
               padding: '10px',
@@ -325,6 +375,15 @@ function PlatformCard({
         <div style={{ fontSize: 10, color: T.textDim, textAlign: 'center' }}>
           Last sync: {new Date(conn.lastSyncAt).toLocaleString()}
         </div>
+      )}
+
+      {showUpgrade && upgradeRequired && (
+        <UpgradeModal
+          feature={`Connect ${meta.label}`}
+          description={`Integrate ${meta.label} orders directly into Flick. Orders appear automatically — no separate tablet needed.`}
+          required={upgradeRequired}
+          onClose={() => setShowUpgrade(false)}
+        />
       )}
     </div>
   );

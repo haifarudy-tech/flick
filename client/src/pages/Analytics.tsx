@@ -11,6 +11,8 @@ import {
   useAnalyticsSocket,
 } from '@/hooks/useAnalytics';
 import type { DatePreset } from '@/types/analytics';
+import { planMeets } from '@flick/shared/types';
+import { UpgradeModal } from '@/components/UpgradeModal';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -178,6 +180,8 @@ export function AnalyticsPage() {
   useAnalyticsSocket(from, to);
 
   const accessToken = useAuthStore((s) => s.accessToken);
+  const plan = useAuthStore((s) => s.business?.plan ?? 'FREE');
+  const [showExportUpgrade, setShowExportUpgrade] = useState(false);
 
   const handleExport = async () => {
     const API_URL = import.meta.env['VITE_API_URL'] ?? 'http://localhost:3000';
@@ -300,15 +304,15 @@ export function AnalyticsPage() {
 
         <div style={{ flex: 1 }} />
 
-        {/* Export button */}
+        {/* Export button — PRO+ only */}
         <button
-          onClick={handleExport}
+          onClick={planMeets(plan, 'PRO') ? handleExport : () => setShowExportUpgrade(true)}
           style={{
             padding: '7px 16px',
             borderRadius: RADIUS.sm,
-            border: `1px solid ${T.border}`,
-            background: T.surface,
-            color: T.textMid,
+            border: `1px solid ${planMeets(plan, 'PRO') ? T.border : T.accent + '40'}`,
+            background: planMeets(plan, 'PRO') ? T.surface : T.accentGlow,
+            color: planMeets(plan, 'PRO') ? T.textMid : T.accent,
             fontSize: 12,
             fontWeight: 600,
             cursor: 'pointer',
@@ -317,9 +321,18 @@ export function AnalyticsPage() {
             gap: 6,
           }}
         >
-          ↓ Export CSV
+          {planMeets(plan, 'PRO') ? '↓' : '🔒'} Export CSV
         </button>
       </div>
+
+      {showExportUpgrade && (
+        <UpgradeModal
+          feature="Analytics CSV Export"
+          description="Download a full CSV of your orders, revenue, and staff performance for any date range — ready for Excel or your accountant."
+          required="PRO"
+          onClose={() => setShowExportUpgrade(false)}
+        />
+      )}
 
       {/* Scrollable body */}
       <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>

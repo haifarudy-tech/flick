@@ -6,6 +6,8 @@ import { Pill } from '@/components/ui/Pill';
 import { Toggle } from '@/components/ui/Toggle';
 import { useToast } from '@/components/ui/Toast';
 import { useMenu } from '@/hooks/useMenu';
+import { useAuthStore } from '@/stores/auth';
+import { useNavigate } from 'react-router-dom';
 import {
   useCreateItem,
   useDeleteItem,
@@ -30,9 +32,15 @@ type PanelState =
 export function MenuManagerPage() {
   const { data, isLoading } = useMenu();
   const toast = useToast();
+  const plan = useAuthStore((s) => s.business?.plan ?? 'FREE');
+  const navBilling = useNavigate();
 
   const categories = data?.categories ?? [];
   const items = data?.items ?? [];
+  const itemCount = items.length;
+  const isFree = plan === 'FREE';
+  const nearLimit = isFree && itemCount >= 40;
+  const atLimit = isFree && itemCount >= 50;
 
   const createItem = useCreateItem();
   const updateItem = useUpdateItem();
@@ -239,11 +247,54 @@ export function MenuManagerPage() {
           <Button variant="secondary" onClick={() => setPanel({ kind: 'categories' })}>
             Manage categories
           </Button>
-          <Button onClick={() => setPanel({ kind: 'create' })} icon="+">
-            Add item
+          <Button onClick={() => setPanel({ kind: 'create' })} icon="+" disabled={atLimit}>
+            {atLimit ? 'Limit reached' : 'Add item'}
           </Button>
         </div>
       </div>
+
+      {/* FREE plan item limit warning */}
+      {nearLimit && (
+        <div
+          style={{
+            padding: '10px 20px',
+            background: atLimit ? `${T.red}10` : `${T.gold}10`,
+            borderBottom: `1px solid ${atLimit ? `${T.red}25` : `${T.gold}25`}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: 12, color: atLimit ? T.red : T.gold }}>
+            {atLimit
+              ? `⚠ You've reached the 50-item limit on the Free plan. No new items can be added.`
+              : itemCount >= 49
+              ? `⚠ 1 item remaining on your Free plan limit (${itemCount}/50).`
+              : itemCount >= 45
+              ? `You're at ${itemCount}/50 items on the Free plan.`
+              : `Approaching your 50-item free limit (${itemCount}/50).`}
+          </span>
+          <button
+            onClick={() => navBilling('/settings/billing')}
+            style={{
+              background: 'transparent',
+              border: `1px solid ${atLimit ? T.red : T.gold}`,
+              borderRadius: 8,
+              padding: '4px 10px',
+              fontSize: 11,
+              fontWeight: 700,
+              color: atLimit ? T.red : T.gold,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Upgrade
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div
