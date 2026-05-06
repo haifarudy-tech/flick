@@ -7,6 +7,10 @@ import { QueryProvider } from './lib/queryClient';
 import { bootstrapSession } from './lib/api';
 import { wireSocketToAuth } from './lib/socket';
 import { ToastProvider } from './components/ui/Toast';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { initSentry } from './lib/sentry';
+
+initSentry();
 
 // Wire the socket to auth-state changes so token refresh rebuilds the
 // connection automatically.
@@ -18,12 +22,14 @@ void bootstrapSession();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
-      <QueryProvider>
-        <ToastProvider>
-          <App />
-        </ToastProvider>
-      </QueryProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <QueryProvider>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </QueryProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>,
 );

@@ -1,3 +1,9 @@
+import { initSentry } from './lib/sentry.js';
+
+// Sentry must be initialised before Express is constructed so its hooks can
+// instrument the app correctly.
+initSentry();
+
 import express from 'express';
 import http from 'node:http';
 import cors from 'cors';
